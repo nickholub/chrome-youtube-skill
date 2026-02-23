@@ -1,108 +1,66 @@
 ---
-name: youtube-transcript
-description: Extract YouTube video transcripts using Chrome browser automation via CDP. Returns clean transcript text with video metadata (title, channel). Works with any YouTube video that has captions.
+name: youtube
+description: Summarize YouTube videos from links using the local chrome-youtube-transcript project. Use when a user sends a YouTube URL (youtube.com, youtu.be, shorts) and asks for a transcript, summary, key points, or breakdown. Extract transcript with this project’s Python tool, then return a concise actionable summary personalized to Nick’s projects, goals, and work style.
 ---
 
-# YouTube Transcript Extractor
+# YouTube Summary (project-backed)
 
-## When to Use
+Use this workflow every time this skill is invoked.
 
-- User shares a YouTube URL and wants a summary or transcript
-- Need to extract spoken content from a YouTube video
-- Analyzing video content programmatically
-- Any task requiring the text of what was said in a video
+## 1) Extract transcript with the project tool (required)
 
-## How It Works
+Run:
 
-Connects to a visible Chrome instance via Chrome DevTools Protocol (CDP):
-1. **Opens tab** with the YouTube video URL in a real browser window
-2. **Clicks "Show transcript"** button via JavaScript injection
-3. **Reads transcript text** from the DOM (same as a user would see)
-4. **Falls back** to fetching caption tracks via in-browser `fetch()` if DOM method fails
-5. **Closes tab** automatically
-
-## Usage
-
-### CLI
 ```bash
-# Basic extraction (plain text output)
-~/projects/chrome-youtube-summary/extract "https://www.youtube.com/watch?v=VIDEO_ID"
-
-# JSON output
-~/projects/chrome-youtube-summary/extract "https://www.youtube.com/watch?v=VIDEO_ID" --json
-
-# From stdin
-echo "https://www.youtube.com/watch?v=VIDEO_ID" | ~/projects/chrome-youtube-summary/extract --stdin
-
-# Custom CDP port
-~/projects/chrome-youtube-summary/extract "https://www.youtube.com/watch?v=VIDEO_ID" --port 9333
+python3 /Users/mike/projects/chrome-youtube-transcript/extract_transcript.py "<YOUTUBE_URL>" --json
 ```
 
-### From Python
-```python
-import subprocess, json
+Rules:
+- Always use this project tool for extraction.
+- Do not switch to other transcript tools.
+- Parse JSON output and check `success`.
 
-result = subprocess.run([
-    "python3", "/Users/nick/projects/chrome-youtube-summary/extract_transcript.py",
-    url, "--json"
-], capture_output=True, text=True)
+## 2) Handle extraction failure
 
-if result.returncode == 0:
-    data = json.loads(result.stdout)
-    if data["success"]:
-        transcript = data["transcript"]
-        title = data["title"]
-```
+If `success` is false:
+- Reply with a short failure note.
+- Include the tool’s error text.
+- Ask for another link or a retry.
 
-## Output Format
+## 3) Build summary from transcript
 
-### Text Mode (default)
-```
-Title: Video Title
-Channel: Channel Name
-==================================================
-[full transcript text...]
-```
+When extraction succeeds, produce:
+- **Title + channel**
+- **Key points** (5–8 bullets)
+- **Actionable for Nick** (3–5 bullets tied to his context)
 
-### JSON Mode (--json)
-```json
-{
-  "success": true,
-  "video_id": "dQw4w9WgXcQ",
-  "title": "Video Title",
-  "channel": "Channel Name",
-  "url": "https://www.youtube.com/watch?v=...",
-  "transcript": "full transcript text...",
-  "language": "en",
-  "method": "dom",
-  "error": ""
-}
-```
+Personalization targets for Nick:
+- OpenClaw monetization and skill/product opportunities
+- Shipping habits, distribution consistency, and creator workflow
+- Builder-first decisions for indie products (pricing, positioning, MVP scope)
+- Practical next actions he can do today
 
-## Prerequisites
+## 4) Response style
 
-- Chrome running with remote debugging:
-  ```bash
-  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-    --remote-debugging-port=9222 '--remote-allow-origins=*' \
-    --user-data-dir="$HOME/.chrome-debug-profile"
-  ```
-- Python 3 with `requests` and `websocket-client`:
-  ```bash
-  pip3 install requests websocket-client
-  ```
+- Keep it concise, useful, and concrete.
+- Avoid fluff and generic motivation.
+- Prefer explicit next steps over abstract advice.
 
-## Error Handling
+## 5) Optional save (only when asked)
 
-- **No Chrome connection**: Clear error message with startup instructions
-- **No captions available**: Returns error with video metadata still populated
-- **DOM extraction fails**: Falls back to API-based in-browser fetch
-- **Invalid URL**: Reports unparseable video ID
+If user asks to save artifacts:
+- Save transcript to `/Users/Shared/yt_transcripts/<video_id>.txt`
+- Save summary to `/Users/Shared/yt_summaries/<video_id>.md`
 
-## Supported URL Formats
+## Expected JSON fields
 
-- `https://www.youtube.com/watch?v=VIDEO_ID`
-- `https://youtu.be/VIDEO_ID`
-- `https://www.youtube.com/shorts/VIDEO_ID`
-- `https://www.youtube.com/embed/VIDEO_ID`
-- `https://m.youtube.com/watch?v=VIDEO_ID`
+Typical output includes:
+- `success`
+- `video_id`
+- `title`
+- `channel`
+- `url`
+- `transcript`
+- `language`
+- `method`
+- `error`
