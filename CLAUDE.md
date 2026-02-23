@@ -11,47 +11,55 @@ CLAUDE.md               # This file
 
 ## Architecture
 
-Connects to Chrome via CDP (Chrome DevTools Protocol) on `--remote-debugging-port` (default 9222).
+Connects to a visible Chrome instance via CDP (Chrome DevTools Protocol) on `--remote-debugging-port` (default 9222). Mimics normal user behavior by clicking "Show transcript" and reading the DOM.
 
 **Extraction flow:**
-1. `GET /json/new?{url}` — opens a new Chrome tab, returns target info with WebSocket URL
-2. WebSocket → `Runtime.evaluate` — injects JS to read `window.ytInitialPlayerResponse`
-3. Extracts caption track URLs from `captions.playerCaptionsTracklistRenderer.captionTracks`
-4. Fetches caption track with `&fmt=json3` via Python requests
-5. Parses `events[].segs[].utf8` → joins into plain text
+1. `PUT /json/new?{url}` — opens a new visible Chrome tab
+2. Wait for page to load, poll for `ytInitialPlayerResponse`
+3. Connect WebSocket to tab, extract video metadata
+4. **DOM method (primary):** Click "Show transcript" button → wait for `#segments-container` → extract text from `yt-formatted-string.segment-text` elements
+5. **API method (fallback):** Fetch caption track URL via in-browser `fetch()` with credentials
 6. `GET /json/close/{targetId}` — closes the tab
 
 **Key design decisions:**
-- Uses `ytInitialPlayerResponse` (YouTube's player data) rather than DOM scraping — more reliable
-- Caption fetch happens in Python (not in-browser) to avoid CORS issues
-- Retries caption extraction 3 times with delay to handle slow page loads
-- Prefers English captions, falls back to first available track
+- DOM extraction first (same as ChromeAIHighlights) — most reliable, no API calls
+- All network requests happen inside the browser tab with credentials — avoids 429 rate limiting
+- WebSocket connects after initial page load (navigation resets WS connections)
+- Chrome 145+ requires PUT for `/json/new`, falls back to GET for older versions
 
 ## Dependencies
 
 - Python 3 stdlib (`json`, `sys`, `time`, `urllib.parse`)
-- `requests` — HTTP calls to CDP endpoints and caption track URLs
-- `websocket-client` — WebSocket connection for `Runtime.evaluate`
+- `requests` — HTTP calls to CDP endpoints (open/close tab)
+- `websocket-client` — WebSocket to tab for `Runtime.evaluate`
+
+## Launching Chrome
+
+Chrome must be running with `--remote-debugging-port`. Requires a non-default `--user-data-dir`:
+
+```bash
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 \
+  '--remote-allow-origins=*' \
+  --user-data-dir="$HOME/.chrome-debug-profile"
+```
 
 ## Testing
 
 ```bash
-# 1. Ensure Chrome is running with debugging port
-open -a "Google Chrome" --args --remote-debugging-port=9222
+# Extract transcript (plain text)
+python3 extract_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
 
-# 2. Test with a known video
-python3 extract_transcript.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+# JSON output
+python3 extract_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID" --json
 
-# 3. Test JSON output
-python3 extract_transcript.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json
-
-# 4. Test error case (no captions)
-python3 extract_transcript.py "https://www.youtube.com/watch?v=INVALID_ID"
+# Via wrapper
+./extract "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
 ## Ported From
 
-Caption extraction logic adapted from `ChromeAIHighlights/src/contentScript.js` (lines 337-501), specifically:
-- `getPlayerResponseFromPage()` → JS injection via `Runtime.evaluate`
-- `fetchTranscriptFromTrack()` → `_fetch_transcript()` in Python
-- `getCaptionTracksWithRetry()` → retry loop in `extract_transcript()`
+DOM extraction logic from `ChromeAIHighlights/src/contentScript.js`:
+- `extractTranscriptFromDOM()` (lines 245-313) → `_extract_from_dom()`
+- `waitForElement()` (lines 223-243) → inline `waitForEl()` in JS
+- `fetchTranscriptFromTrack()` (lines 448-473) → `_extract_from_api()` fallback

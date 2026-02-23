@@ -14,11 +14,11 @@ description: Extract YouTube video transcripts using Chrome browser automation v
 
 ## How It Works
 
-Connects to a running Chrome instance via Chrome DevTools Protocol (CDP):
-1. **Opens tab** with the YouTube video URL
-2. **Extracts `ytInitialPlayerResponse`** from the page to find caption tracks
-3. **Fetches caption track** in json3 format (prefers English, falls back to first available)
-4. **Parses transcript** from caption segments into clean text
+Connects to a visible Chrome instance via Chrome DevTools Protocol (CDP):
+1. **Opens tab** with the YouTube video URL in a real browser window
+2. **Clicks "Show transcript"** button via JavaScript injection
+3. **Reads transcript text** from the DOM (same as a user would see)
+4. **Falls back** to fetching caption tracks via in-browser `fetch()` if DOM method fails
 5. **Closes tab** automatically
 
 ## Usage
@@ -74,16 +74,18 @@ Channel: Channel Name
   "url": "https://www.youtube.com/watch?v=...",
   "transcript": "full transcript text...",
   "language": "en",
-  "method": "api",
+  "method": "dom",
   "error": ""
 }
 ```
 
 ## Prerequisites
 
-- Chrome running with remote debugging enabled:
+- Chrome running with remote debugging:
   ```bash
-  open -a "Google Chrome" --args --remote-debugging-port=9222
+  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+    --remote-debugging-port=9222 '--remote-allow-origins=*' \
+    --user-data-dir="$HOME/.chrome-debug-profile"
   ```
 - Python 3 with `requests` and `websocket-client`:
   ```bash
@@ -94,7 +96,7 @@ Channel: Channel Name
 
 - **No Chrome connection**: Clear error message with startup instructions
 - **No captions available**: Returns error with video metadata still populated
-- **Fetch failures**: Retries caption track extraction up to 3 times
+- **DOM extraction fails**: Falls back to API-based in-browser fetch
 - **Invalid URL**: Reports unparseable video ID
 
 ## Supported URL Formats

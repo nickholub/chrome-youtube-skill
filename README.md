@@ -1,27 +1,25 @@
 # YouTube Transcript Extractor
 
-Extract YouTube video transcripts by connecting to a running Chrome instance via the Chrome DevTools Protocol (CDP). Injects JavaScript to read YouTube's internal player data (`ytInitialPlayerResponse`), fetches caption tracks, and returns clean plain text.
+Extract YouTube video transcripts by connecting to a visible Chrome instance via CDP. Clicks "Show transcript" and reads the DOM — the same approach used by real users and the [ChromeAIHighlights](https://github.com/nicholasgasior/ChromeAIHighlights) extension.
 
 ## How It Works
 
 ```
 ┌──────────┐    CDP HTTP     ┌─────────────┐   WebSocket    ┌──────────────┐
 │  Script   │ ──────────────→│ Chrome :9222 │ ←────────────→ │ YouTube Tab  │
-│ (Python)  │  open/close    │              │  Runtime.eval  │              │
+│ (Python)  │  open/close    │  (visible)   │  Runtime.eval  │  (visible)   │
 └──────────┘    tab          └─────────────┘                └──────────────┘
-      │                                                            │
-      │  1. Open new tab with video URL                            │
-      │  2. Wait for page load                                     │
-      │  3. Inject JS → read ytInitialPlayerResponse               │
-      │  4. Get caption track URLs back              ◄─────────────┘
-      │  5. Fetch caption track (&fmt=json3) directly via HTTP
-      │  6. Parse events[].segs[].utf8 → join into text
-      │  7. Close tab
+      │
+      │  1. Open new tab with video URL
+      │  2. Wait for page to fully load
+      │  3. Click "Show transcript" button via JS
+      │  4. Read transcript text from DOM
+      │  5. Close tab
       ▼
    Transcript text
 ```
 
-The key insight is that YouTube embeds all caption metadata in `window.ytInitialPlayerResponse` when a page loads. Instead of scraping the DOM or using unofficial APIs, we read this object directly from the page context, then fetch the actual caption data server-side in Python.
+Everything happens in a real, visible Chrome window. The script clicks buttons and reads the page just like a user would — no headless mode, no API calls that get rate-limited.
 
 ## Setup
 
@@ -31,16 +29,14 @@ The key insight is that YouTube embeds all caption metadata in `window.ytInitial
 pip3 install requests websocket-client
 ```
 
-**2. Start Chrome with remote debugging enabled:**
+**2. Launch Chrome with remote debugging:**
 
 ```bash
-# macOS
-open -a "Google Chrome" --args --remote-debugging-port=9222
-
-# Linux
-google-chrome --remote-debugging-port=9222
-
-# Or if Chrome is already running, restart it with the flag
+# macOS — must use a non-default user-data-dir
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 \
+  '--remote-allow-origins=*' \
+  --user-data-dir="$HOME/.chrome-debug-profile"
 ```
 
 ## Usage
@@ -79,7 +75,7 @@ This is the full transcript text extracted from the video captions...
   "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
   "transcript": "This is the full transcript text...",
   "language": "en",
-  "method": "api",
+  "method": "dom",
   "error": ""
 }
 ```
@@ -96,13 +92,13 @@ This is the full transcript text extracted from the video captions...
 
 | File | Purpose |
 |------|---------|
-| `extract_transcript.py` | Main script — CDP connection, JS injection, caption parsing |
+| `extract_transcript.py` | Main script — CDP connection, DOM transcript extraction |
 | `extract` | Bash wrapper for easy CLI invocation |
 | `SKILL.md` | OpenClaw skill manifest |
 | `CLAUDE.md` | Developer/architecture notes |
 
 ## Limitations
 
-- Requires Chrome running with `--remote-debugging-port`
+- Requires Chrome running with `--remote-debugging-port` and `--remote-allow-origins=*`
 - Only works with videos that have captions (auto-generated or manual)
 - Prefers English captions; falls back to first available language
