@@ -1,0 +1,7 @@
+#!/bin/bash
+# YouTube Transcript Extractor - CLI Wrapper
+# Usage: ./extract <youtube-url> [--json] [--port 9222]
+# Or:    echo '<url>' | ./extract --stdin [--json]
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "$SCRIPT_DIR/extract_transcript.py" "$@"
