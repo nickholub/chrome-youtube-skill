@@ -27,12 +27,29 @@ If `success` is false:
 - Include the tool’s error text.
 - Ask for another link or a retry.
 
-## 3) Build summary from transcript
+## 3) Build summary in the exact target markdown shape
 
-When extraction succeeds, produce:
-- **Title + channel**
-- **Key points** (5–8 bullets)
-- **Actionable for Nick** (3–5 bullets tied to his context)
+When extraction succeeds, build output with this exact structure:
+
+```markdown
+**URL:** <video_url>
+
+## <title> (<channel>)
+
+### Key points
+- ...
+
+### 🎯 Relevant to you
+- ...
+
+### Actionable items
+- ...
+```
+
+Content rules:
+- Key points: 5–8 bullets
+- Relevant to you: 3–5 bullets personalized to Nick
+- Actionable items: 3–5 concrete next steps
 
 Personalization targets for Nick:
 - OpenClaw monetization and skill/product opportunities
@@ -46,11 +63,17 @@ Personalization targets for Nick:
 - Avoid fluff and generic motivation.
 - Prefer explicit next steps over abstract advice.
 
-## 5) Optional save (only when asked)
+## 5) Required save + identical Telegram output
 
-If user asks to save artifacts:
-- Save transcript to `/Users/Shared/yt_transcripts/<video_id>.txt`
-- Save summary to `/Users/Shared/yt_summaries/<video_id>.md`
+On every successful run, always write the summary file to:
+
+`/Users/Shared/yt_summaries/<channel> - <title>.md`
+
+Rules:
+- Create `/Users/Shared/yt_summaries` if it does not exist.
+- Sanitize filename characters (`/ \\ : * ? " < > |`) to `_`.
+- File contents must exactly match the markdown structure in Step 3.
+- Telegram/user reply must be exactly the same text as the saved file (byte-for-byte content match).
 
 ## Expected JSON fields
 
