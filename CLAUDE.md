@@ -33,16 +33,9 @@ Connects to a visible Chrome instance via CDP (Chrome DevTools Protocol) on `--r
 - `requests` — HTTP calls to CDP endpoints (open/close tab)
 - `websocket-client` — WebSocket to tab for `Runtime.evaluate`
 
-## Launching Chrome
+## Chrome Management
 
-Chrome must be running with `--remote-debugging-port`. Requires a non-default `--user-data-dir`:
-
-```bash
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --remote-debugging-port=9222 \
-  '--remote-allow-origins=*' \
-  --user-data-dir="$HOME/.chrome-debug-profile"
-```
+The script automatically launches and shuts down its own Chrome instance with `--remote-debugging-port`. Any existing debug Chrome using the same profile (`~/.chrome-debug-profile`) is killed first to avoid conflicts. No manual Chrome launch is needed.
 
 ## Testing
 

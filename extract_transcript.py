@@ -11,15 +11,28 @@ Ported from ChromeAIHighlights/src/contentScript.js.
 import sys
 import json
 import time
+import os
+import shutil
+import subprocess
 import requests
 import websocket
 from urllib.parse import urlparse, parse_qs
 
 
 class YouTubeTranscriptExtractor:
+    CHROME_PATHS = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium-browser",
+        "chromium",
+    ]
+
     def __init__(self, port=9222):
         self.port = port
         self.base_url = f"http://127.0.0.1:{port}"
+        self._chrome_process = None
+        self._user_data_dir = os.path.expanduser("~/.chrome-debug-profile")
 
     def open_tab(self, url):
         """Open a new tab and return target info."""
@@ -36,6 +49,89 @@ class YouTubeTranscriptExtractor:
             requests.get(f"{self.base_url}/json/close/{target_id}", timeout=5)
         except Exception:
             pass
+
+    # ── Chrome lifecycle ─────────────────────────────────────────
+
+    def _find_chrome(self):
+        """Find Chrome executable on this system."""
+        for path in self.CHROME_PATHS:
+            if os.path.isfile(path):
+                return path
+            found = shutil.which(path)
+            if found:
+                return found
+        return None
+
+    def _kill_existing_chrome(self):
+        """Kill any Chrome instance using our debug profile."""
+        try:
+            subprocess.run(
+                ["pkill", "-f", f"user-data-dir={self._user_data_dir}"],
+                capture_output=True, timeout=5,
+            )
+            time.sleep(1)
+        except Exception:
+            pass
+        # Clean up stale lock files that prevent Chrome from starting
+        for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+            try:
+                os.remove(os.path.join(self._user_data_dir, name))
+            except OSError:
+                pass
+
+    def _launch_chrome(self):
+        """Launch Chrome with remote debugging enabled."""
+        chrome = self._find_chrome()
+        if not chrome:
+            raise RuntimeError(
+                "Chrome not found. Install Google Chrome or set it in PATH."
+            )
+        os.makedirs(self._user_data_dir, exist_ok=True)
+        self._chrome_process = subprocess.Popen(
+            [
+                chrome,
+                f"--remote-debugging-port={self.port}",
+                "--remote-allow-origins=*",
+                f"--user-data-dir={self._user_data_dir}",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def _wait_for_chrome(self, timeout=15):
+        """Wait for Chrome's CDP endpoint to respond."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                resp = requests.get(f"{self.base_url}/json/version", timeout=2)
+                if resp.status_code == 200:
+                    return
+            except requests.ConnectionError:
+                pass
+            time.sleep(0.5)
+        raise RuntimeError(
+            f"Chrome did not start within {timeout}s on port {self.port}"
+        )
+
+    def _shutdown_chrome(self):
+        """Terminate the Chrome process we launched."""
+        proc = self._chrome_process
+        if not proc:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=3)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        self._chrome_process = None
 
     def send_js(self, ws, script, msg_id=1):
         """Send JS for evaluation and wait for the matching response."""
@@ -66,6 +162,11 @@ class YouTubeTranscriptExtractor:
         ws = None
 
         try:
+            # Launch a fresh Chrome instance
+            self._kill_existing_chrome()
+            self._launch_chrome()
+            self._wait_for_chrome()
+
             target = self.open_tab(canonical_url)
 
             # Wait for page to load before connecting WebSocket
@@ -107,16 +208,6 @@ class YouTubeTranscriptExtractor:
                 transcript=transcript, method=method,
             )
 
-        except requests.ConnectionError:
-            return self._result(
-                video_id=video_id, url=canonical_url,
-                error=(
-                    f"Cannot connect to Chrome on port {self.port}. "
-                    "Launch Chrome with: /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome "
-                    "--remote-debugging-port=9222 '--remote-allow-origins=*' "
-                    '--user-data-dir="$HOME/.chrome-debug-profile"'
-                ),
-            )
         except Exception as e:
             return self._result(
                 video_id=video_id, url=canonical_url, error=str(e)
@@ -129,6 +220,7 @@ class YouTubeTranscriptExtractor:
                     pass
             if target:
                 self.close_tab(target["id"])
+            self._shutdown_chrome()
 
     # ── Page helpers ──────────────────────────────────────────────
 
