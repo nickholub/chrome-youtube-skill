@@ -138,6 +138,30 @@ python3 -m pytest test_extract_transcript.py -v
 
 All tests are fully mocked — no Chrome instance is needed to run them.
 
+## Sequential Execution Lock
+
+The script uses an exclusive file lock (`fcntl.flock` on `/tmp/yt-extract.lock`) to ensure only one extraction runs at a time. If you invoke the script twice concurrently, the second invocation blocks until the first one finishes.
+
+**How the lock is released:**
+
+| Scenario | Lock released? | Mechanism |
+|----------|---------------|-----------|
+| Extraction completes successfully | Yes | `with` block exits, file closes, lock released |
+| Extraction raises an exception | Yes | `with` block exits on exception, file closes, lock released |
+| Process killed (`SIGTERM`, `SIGKILL`, `kill -9`) | Yes | OS releases `flock` locks when the owning process dies |
+| Machine reboots / power loss | Yes | `/tmp` is cleared on boot; `flock` doesn't survive process death anyway |
+
+The lock is tied to the process lifetime, not to the file on disk. There is no risk of a stuck lock preventing future runs. Even if the script crashes mid-extraction, the next invocation will acquire the lock immediately.
+
+**Manual release (not normally needed):**
+
+```bash
+# If you somehow need to clear it, just remove the file
+rm /tmp/yt-extract.lock
+```
+
+Removing the file is harmless — the script recreates it on each run. But in practice you should never need to do this, since `flock` locks are always released when the process exits.
+
 ## Limitations
 
 - Requires Chrome or Chromium installed on the system
