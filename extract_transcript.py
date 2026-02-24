@@ -12,11 +12,14 @@ import sys
 import json
 import time
 import os
+import fcntl
 import shutil
 import subprocess
 import requests
 import websocket
 from urllib.parse import urlparse, parse_qs
+
+LOCK_FILE = "/tmp/yt-extract.lock"
 
 
 class YouTubeTranscriptExtractor:
@@ -152,6 +155,7 @@ class YouTubeTranscriptExtractor:
     def extract_transcript(self, url):
         """
         Open YouTube URL in visible Chrome, extract transcript via DOM, close tab.
+        Acquires an exclusive file lock so concurrent invocations run sequentially.
         """
         video_id = self._parse_video_id(url)
         if not video_id:
@@ -161,66 +165,68 @@ class YouTubeTranscriptExtractor:
         target = None
         ws = None
 
-        try:
-            # Launch a fresh Chrome instance
-            self._kill_existing_chrome()
-            self._launch_chrome()
-            self._wait_for_chrome()
+        with open(LOCK_FILE, "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                # Launch a fresh Chrome instance
+                self._kill_existing_chrome()
+                self._launch_chrome()
+                self._wait_for_chrome()
 
-            target = self.open_tab(canonical_url)
+                target = self.open_tab(canonical_url)
 
-            # Wait for page to load before connecting WebSocket
-            # (navigating resets the WS connection)
-            time.sleep(5)
+                # Wait for page to load before connecting WebSocket
+                # (navigating resets the WS connection)
+                time.sleep(5)
 
-            ws = websocket.create_connection(
-                target["webSocketDebuggerUrl"], timeout=30
-            )
-
-            # Poll until YouTube's JS has initialized
-            self._wait_for_player_response(ws)
-
-            # Get video metadata from ytInitialPlayerResponse
-            meta = self._get_metadata(ws, msg_id=2)
-
-            # Try DOM extraction: click "Show transcript" and scrape
-            transcript = self._extract_from_dom(ws, msg_id=10)
-
-            # Fallback: try API-based extraction via in-page fetch
-            method = "dom"
-            if not transcript:
-                transcript = self._extract_from_api(ws, msg_id=20)
-                method = "api"
-
-            if not transcript:
-                return self._result(
-                    video_id=video_id, url=canonical_url,
-                    title=meta.get("title", ""),
-                    channel=meta.get("channel", ""),
-                    error="No transcript found. Video may not have captions.",
+                ws = websocket.create_connection(
+                    target["webSocketDebuggerUrl"], timeout=30
                 )
 
-            return self._result(
-                success=True, video_id=video_id, url=canonical_url,
-                title=meta.get("title", ""),
-                channel=meta.get("channel", ""),
-                language=meta.get("language", ""),
-                transcript=transcript, method=method,
-            )
+                # Poll until YouTube's JS has initialized
+                self._wait_for_player_response(ws)
 
-        except Exception as e:
-            return self._result(
-                video_id=video_id, url=canonical_url, error=str(e)
-            )
-        finally:
-            if ws:
-                try:
-                    ws.close()
-                except Exception:
-                    pass
-            if target:
-                self.close_tab(target["id"])
-            self._shutdown_chrome()
+                # Get video metadata from ytInitialPlayerResponse
+                meta = self._get_metadata(ws, msg_id=2)
+
+                # Try DOM extraction: click "Show transcript" and scrape
+                transcript = self._extract_from_dom(ws, msg_id=10)
+
+                # Fallback: try API-based extraction via in-page fetch
+                method = "dom"
+                if not transcript:
+                    transcript = self._extract_from_api(ws, msg_id=20)
+                    method = "api"
+
+                if not transcript:
+                    return self._result(
+                        video_id=video_id, url=canonical_url,
+                        title=meta.get("title", ""),
+                        channel=meta.get("channel", ""),
+                        error="No transcript found. Video may not have captions.",
+                    )
+
+                return self._result(
+                    success=True, video_id=video_id, url=canonical_url,
+                    title=meta.get("title", ""),
+                    channel=meta.get("channel", ""),
+                    language=meta.get("language", ""),
+                    transcript=transcript, method=method,
+                )
+
+            except Exception as e:
+                return self._result(
+                    video_id=video_id, url=canonical_url, error=str(e)
+                )
+            finally:
+                if ws:
+                    try:
+                        ws.close()
+                    except Exception:
+                        pass
+                if target:
+                    self.close_tab(target["id"])
+                self._shutdown_chrome()
 
     # ── Page helpers ──────────────────────────────────────────────
 
