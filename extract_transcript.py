@@ -20,6 +20,7 @@ import websocket
 from urllib.parse import urlparse, parse_qs
 
 LOCK_FILE = "/tmp/yt-extract.lock"
+DEFAULT_OUTPUT_DIR = "/Users/Shared/yt_transcripts"
 
 
 class YouTubeTranscriptExtractor:
@@ -444,16 +445,40 @@ class YouTubeTranscriptExtractor:
         }
 
 
+def _sanitize_filename(value):
+    """Sanitize filename for cross-platform safety."""
+    if not value:
+        return "untitled"
+    for ch in '/\\:*?"<>|':
+        value = value.replace(ch, "_")
+    return " ".join(value.split()).strip() or "untitled"
+
+
+def _save_transcript(result, output_dir):
+    """Save successful transcript to disk and return file path."""
+    os.makedirs(output_dir, exist_ok=True)
+    channel = _sanitize_filename(result.get("channel") or "unknown-channel")
+    title = _sanitize_filename(result.get("title") or "untitled")
+    video_id = _sanitize_filename(result.get("video_id") or "video")
+    filename = f"{channel} - {title} [{video_id}].txt"
+    path = os.path.join(output_dir, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(result.get("transcript", ""))
+    return path
+
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: extract_transcript.py <youtube-url> [--json] [--port 9222]", file=sys.stderr)
-        print("       echo '<url>' | extract_transcript.py --stdin [--json]", file=sys.stderr)
+        print("Usage: extract_transcript.py <youtube-url> [--json] [--port 9222] [--output-dir PATH] [--no-save]", file=sys.stderr)
+        print("       echo '<url>' | extract_transcript.py --stdin [--json] [--output-dir PATH] [--no-save]", file=sys.stderr)
         sys.exit(1)
 
     output_json = False
     port = 9222
     url = None
     use_stdin = False
+    output_dir = DEFAULT_OUTPUT_DIR
+    save_output = True
 
     args = sys.argv[1:]
     i = 0
@@ -465,6 +490,11 @@ def main():
             i += 1
         elif args[i] == "--stdin":
             use_stdin = True
+        elif args[i] == "--output-dir" and i + 1 < len(args):
+            output_dir = os.path.expanduser(args[i + 1])
+            i += 1
+        elif args[i] == "--no-save":
+            save_output = False
         elif not args[i].startswith("--") and url is None:
             url = args[i]
         i += 1
@@ -479,6 +509,9 @@ def main():
     extractor = YouTubeTranscriptExtractor(port=port)
     result = extractor.extract_transcript(url)
 
+    if result.get("success") and save_output:
+        result["output_file"] = _save_transcript(result, output_dir)
+
     if output_json:
         print(json.dumps(result, indent=2))
     else:
@@ -490,6 +523,9 @@ def main():
             if result["title"] or result["channel"]:
                 print("=" * 50)
             print(result["transcript"])
+            if result.get("output_file"):
+                print("=" * 50)
+                print(f"Saved: {result['output_file']}")
         else:
             print(f"Error: {result['error']}", file=sys.stderr)
             sys.exit(1)

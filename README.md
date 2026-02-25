@@ -70,7 +70,7 @@ Chrome is found automatically. The script searches these paths in order:
 ## Usage
 
 ```bash
-# Plain text output
+# Plain text output (also saves transcript file)
 ./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 # JSON output
@@ -78,6 +78,12 @@ Chrome is found automatically. The script searches these paths in order:
 
 # From stdin
 echo "https://youtu.be/dQw4w9WgXcQ" | ./extract --stdin
+
+# Custom transcript output directory
+./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --output-dir ~/Downloads/yt_transcripts
+
+# Disable file saving
+./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --no-save
 
 # Custom CDP port
 ./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --port 9333
@@ -109,6 +115,13 @@ This is the full transcript text extracted from the video captions...
 ```
 
 The `method` field indicates which extraction path succeeded: `"dom"` for the primary transcript panel scrape, or `"api"` for the caption track URL fallback.
+
+By default, successful runs are saved to:
+
+`/Users/Shared/yt_transcripts`
+
+The JSON output also includes an `output_file` field when saving is enabled.
+Use `--output-dir` to override the directory or `--no-save` to disable file creation.
 
 ## Supported URL Formats
 
