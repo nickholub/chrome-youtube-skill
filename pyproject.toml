@@ -9,4 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-yt-transcript = "extract_transcript:main"
+yt-transcript = "yt_transcript.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

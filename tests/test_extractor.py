@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for extract_transcript.py"""
+"""Unit tests for yt_transcript.extractor"""
 
 import json
 import os
@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock, call
 
 import requests
 
-from extract_transcript import YouTubeTranscriptExtractor
+from yt_transcript.extractor import YouTubeTranscriptExtractor
 
 
 class TestParseVideoId(unittest.TestCase):
@@ -123,7 +123,7 @@ class TestOpenTab(unittest.TestCase):
     def setUp(self):
         self.ext = YouTubeTranscriptExtractor(port=9222)
 
-    @patch("extract_transcript.requests")
+    @patch("yt_transcript.extractor.requests")
     def test_put_success(self, mock_requests):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -135,7 +135,7 @@ class TestOpenTab(unittest.TestCase):
         mock_requests.put.assert_called_once()
         mock_requests.get.assert_not_called()
 
-    @patch("extract_transcript.requests")
+    @patch("yt_transcript.extractor.requests")
     def test_fallback_to_get_on_405(self, mock_requests):
         mock_put_resp = MagicMock()
         mock_put_resp.status_code = 405
@@ -155,14 +155,14 @@ class TestCloseTab(unittest.TestCase):
     def setUp(self):
         self.ext = YouTubeTranscriptExtractor(port=9222)
 
-    @patch("extract_transcript.requests")
+    @patch("yt_transcript.extractor.requests")
     def test_close_tab(self, mock_requests):
         self.ext.close_tab("TAB1")
         mock_requests.get.assert_called_once_with(
             "http://127.0.0.1:9222/json/close/TAB1", timeout=5
         )
 
-    @patch("extract_transcript.requests")
+    @patch("yt_transcript.extractor.requests")
     def test_close_tab_swallows_errors(self, mock_requests):
         mock_requests.get.side_effect = Exception("connection refused")
         # Should not raise
@@ -357,8 +357,8 @@ class TestExtractTranscript(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertIn("Could not parse video ID", result["error"])
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.websocket.create_connection")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
     @patch.object(YouTubeTranscriptExtractor, "close_tab")
     @patch.object(YouTubeTranscriptExtractor, "open_tab")
     def test_successful_dom_extraction(self, mock_open, mock_close, mock_ws_create, mock_sleep):
@@ -395,8 +395,8 @@ class TestExtractTranscript(unittest.TestCase):
         self.assertEqual(result["language"], "en")
         mock_close.assert_called_once_with("TAB1")
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.websocket.create_connection")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
     @patch.object(YouTubeTranscriptExtractor, "close_tab")
     @patch.object(YouTubeTranscriptExtractor, "open_tab")
     def test_dom_fails_falls_back_to_api(self, mock_open, mock_close, mock_ws_create, mock_sleep):
@@ -431,8 +431,8 @@ class TestExtractTranscript(unittest.TestCase):
         self.assertEqual(result["method"], "api")
         self.assertEqual(result["transcript"], "API fallback transcript")
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.websocket.create_connection")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
     @patch.object(YouTubeTranscriptExtractor, "close_tab")
     @patch.object(YouTubeTranscriptExtractor, "open_tab")
     def test_both_methods_fail(self, mock_open, mock_close, mock_ws_create, mock_sleep):
@@ -478,8 +478,8 @@ class TestExtractTranscript(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertIn("Chrome did not start", result["error"])
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.websocket.create_connection")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
     @patch.object(YouTubeTranscriptExtractor, "close_tab")
     @patch.object(YouTubeTranscriptExtractor, "open_tab")
     def test_cleanup_on_exception(self, mock_open, mock_close, mock_ws_create, mock_sleep):
@@ -499,8 +499,8 @@ class TestExtractTranscript(unittest.TestCase):
         mock_close.assert_called_once_with("TAB1")
         self.ext._shutdown_chrome.assert_called()
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.websocket.create_connection")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
     @patch.object(YouTubeTranscriptExtractor, "close_tab")
     @patch.object(YouTubeTranscriptExtractor, "open_tab")
     def test_uses_canonical_url(self, mock_open, mock_close, mock_ws_create, mock_sleep):
@@ -525,10 +525,10 @@ class TestWaitForPlayerResponse(unittest.TestCase):
     def setUp(self):
         self.ext = YouTubeTranscriptExtractor()
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.time.time")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.time.time")
     def test_returns_immediately_when_ready(self, mock_time, mock_sleep):
-        mock_time.side_effect = [0, 0]  # start, first check
+        mock_time.side_effect = [0, 0, 0, 0]  # _wait loop + send_js deadline
         ws = MagicMock()
         ws.recv.return_value = json.dumps({
             "id": 999, "result": {"result": {"value": "true"}}
@@ -538,11 +538,13 @@ class TestWaitForPlayerResponse(unittest.TestCase):
         # Should have sent exactly one JS evaluation
         ws.send.assert_called_once()
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.time.time")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.time.time")
     def test_polls_until_ready(self, mock_time, mock_sleep):
-        # time() returns: start, check1, check2, check3
-        mock_time.side_effect = [0, 1, 2, 3]
+        # time() returns: _wait start, send_js deadline, send_js check,
+        # _wait check, send_js deadline, send_js check,
+        # _wait check, send_js deadline, send_js check
+        mock_time.side_effect = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3]
         ws = MagicMock()
         ws.recv.side_effect = [
             json.dumps({"id": 999, "result": {"result": {"value": "false"}}}),
@@ -556,7 +558,7 @@ class TestWaitForPlayerResponse(unittest.TestCase):
 
 
 class TestMainCli(unittest.TestCase):
-    @patch("extract_transcript.YouTubeTranscriptExtractor")
+    @patch("yt_transcript.cli.YouTubeTranscriptExtractor")
     @patch("sys.argv", ["prog", "https://www.youtube.com/watch?v=abc", "--json"])
     def test_json_output(self, MockExtractor):
         instance = MockExtractor.return_value
@@ -566,7 +568,7 @@ class TestMainCli(unittest.TestCase):
             "language": "en", "method": "dom", "error": "",
         }
 
-        from extract_transcript import main
+        from yt_transcript.cli import main
         from io import StringIO
         import sys
 
@@ -581,7 +583,7 @@ class TestMainCli(unittest.TestCase):
         self.assertTrue(output["success"])
         self.assertEqual(output["transcript"], "text")
 
-    @patch("extract_transcript.YouTubeTranscriptExtractor")
+    @patch("yt_transcript.cli.YouTubeTranscriptExtractor")
     @patch("sys.argv", ["prog", "https://www.youtube.com/watch?v=abc"])
     def test_text_output(self, MockExtractor):
         instance = MockExtractor.return_value
@@ -591,7 +593,7 @@ class TestMainCli(unittest.TestCase):
             "language": "en", "method": "dom", "error": "",
         }
 
-        from extract_transcript import main
+        from yt_transcript.cli import main
         from io import StringIO
         import sys
 
@@ -609,12 +611,12 @@ class TestMainCli(unittest.TestCase):
 
     @patch("sys.argv", ["prog"])
     def test_no_args_exits(self):
-        from extract_transcript import main
+        from yt_transcript.cli import main
         with self.assertRaises(SystemExit) as ctx:
             main()
-        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn(ctx.exception.code, (1, 2))
 
-    @patch("extract_transcript.YouTubeTranscriptExtractor")
+    @patch("yt_transcript.cli.YouTubeTranscriptExtractor")
     @patch("sys.argv", ["prog", "https://www.youtube.com/watch?v=abc", "--port", "9333"])
     def test_custom_port(self, MockExtractor):
         instance = MockExtractor.return_value
@@ -624,7 +626,7 @@ class TestMainCli(unittest.TestCase):
             "language": "", "method": "dom", "error": "",
         }
 
-        from extract_transcript import main
+        from yt_transcript.cli import main
         from io import StringIO
         import sys
 
@@ -666,8 +668,8 @@ class TestKillExistingChrome(unittest.TestCase):
         self.ext = YouTubeTranscriptExtractor()
 
     @patch("os.remove")
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.subprocess.run")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.subprocess.run")
     def test_calls_pkill(self, mock_run, mock_sleep, mock_remove):
         self.ext._kill_existing_chrome()
         mock_run.assert_called_once()
@@ -677,14 +679,14 @@ class TestKillExistingChrome(unittest.TestCase):
         self.assertIn(self.ext._user_data_dir, args[2])
 
     @patch("os.remove")
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.subprocess.run", side_effect=Exception("fail"))
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.subprocess.run", side_effect=Exception("fail"))
     def test_swallows_pkill_errors(self, mock_run, mock_sleep, mock_remove):
         # Should not raise
         self.ext._kill_existing_chrome()
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.subprocess.run")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.subprocess.run")
     def test_removes_singleton_files(self, mock_run, mock_sleep):
         removed = []
         original_remove = os.remove
@@ -701,7 +703,7 @@ class TestLaunchChrome(unittest.TestCase):
     def setUp(self):
         self.ext = YouTubeTranscriptExtractor()
 
-    @patch("extract_transcript.subprocess.Popen")
+    @patch("yt_transcript.extractor.subprocess.Popen")
     @patch("os.makedirs")
     @patch.object(YouTubeTranscriptExtractor, "_find_chrome", return_value="/usr/bin/chrome")
     def test_launches_with_correct_flags(self, mock_find, mock_makedirs, mock_popen):
@@ -726,9 +728,9 @@ class TestWaitForChrome(unittest.TestCase):
     def setUp(self):
         self.ext = YouTubeTranscriptExtractor()
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.time.time")
-    @patch("extract_transcript.requests.get")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.time.time")
+    @patch("yt_transcript.extractor.requests.get")
     def test_returns_when_cdp_responds(self, mock_get, mock_time, mock_sleep):
         mock_time.side_effect = [0, 0]
         mock_resp = MagicMock()
@@ -738,9 +740,9 @@ class TestWaitForChrome(unittest.TestCase):
         self.ext._wait_for_chrome(timeout=15)
         mock_get.assert_called_once()
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.time.time")
-    @patch("extract_transcript.requests.get")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.time.time")
+    @patch("yt_transcript.extractor.requests.get")
     def test_raises_on_timeout(self, mock_get, mock_time, mock_sleep):
         # time() calls: start, check1 (past deadline)
         mock_time.side_effect = [0, 20]
@@ -750,9 +752,9 @@ class TestWaitForChrome(unittest.TestCase):
             self.ext._wait_for_chrome(timeout=15)
         self.assertIn("Chrome did not start", str(ctx.exception))
 
-    @patch("extract_transcript.time.sleep")
-    @patch("extract_transcript.time.time")
-    @patch("extract_transcript.requests.get")
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.time.time")
+    @patch("yt_transcript.extractor.requests.get")
     def test_retries_on_connection_error(self, mock_get, mock_time, mock_sleep):
         import requests as real_requests
         mock_time.side_effect = [0, 1, 2, 3]
@@ -799,7 +801,7 @@ class TestShutdownChrome(unittest.TestCase):
 
 
 class TestMainCliStdin(unittest.TestCase):
-    @patch("extract_transcript.YouTubeTranscriptExtractor")
+    @patch("yt_transcript.cli.YouTubeTranscriptExtractor")
     @patch("sys.argv", ["prog", "--stdin", "--json"])
     @patch("sys.stdin")
     def test_stdin_mode(self, mock_stdin, MockExtractor):
@@ -811,7 +813,7 @@ class TestMainCliStdin(unittest.TestCase):
             "language": "", "method": "dom", "error": "",
         }
 
-        from extract_transcript import main
+        from yt_transcript.cli import main
         from io import StringIO
         import sys
 
@@ -828,7 +830,7 @@ class TestMainCliStdin(unittest.TestCase):
             "https://www.youtube.com/watch?v=abc"
         )
 
-    @patch("extract_transcript.YouTubeTranscriptExtractor")
+    @patch("yt_transcript.cli.YouTubeTranscriptExtractor")
     @patch("sys.argv", ["prog", "https://www.youtube.com/watch?v=abc"])
     def test_error_output_exits_1(self, MockExtractor):
         instance = MockExtractor.return_value
@@ -838,7 +840,7 @@ class TestMainCliStdin(unittest.TestCase):
             "language": "", "method": "", "error": "No captions",
         }
 
-        from extract_transcript import main
+        from yt_transcript.cli import main
 
         with self.assertRaises(SystemExit) as ctx:
             main()

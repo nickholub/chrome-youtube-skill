@@ -3,7 +3,14 @@
 ## Project Structure
 
 ```
-extract_transcript.py   # Main Python script - CDP connection + transcript extraction
+src/yt_transcript/
+    __init__.py         # Package exports: YouTubeTranscriptExtractor, __version__
+    extractor.py        # CDP connection + transcript extraction
+    cli.py              # CLI entry point, file saving
+    __main__.py         # python -m yt_transcript support
+tests/
+    __init__.py
+    test_extractor.py   # Unit tests
 extract                 # Bash wrapper for CLI invocation
 pyproject.toml          # PEP 621 packaging metadata and dependencies
 SKILL.md                # OpenClaw skill manifest
@@ -43,14 +50,17 @@ The script automatically launches and shuts down its own Chrome instance with `-
 ## Testing
 
 ```bash
+# Run tests
+PYTHONPATH=src python3 -m pytest tests/ -v
+
 # Extract transcript (plain text)
-python3 extract_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
+PYTHONPATH=src python3 -m yt_transcript "https://www.youtube.com/watch?v=VIDEO_ID"
 
 # JSON output
-python3 extract_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID" --json
+PYTHONPATH=src python3 -m yt_transcript "https://www.youtube.com/watch?v=VIDEO_ID" --json
 
 # Verbose/debug logging
-python3 extract_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID" -v
+PYTHONPATH=src python3 -m yt_transcript "https://www.youtube.com/watch?v=VIDEO_ID" -v
 
 # Via wrapper
 ./extract "https://www.youtube.com/watch?v=VIDEO_ID"

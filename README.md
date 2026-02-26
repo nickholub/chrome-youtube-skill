@@ -137,16 +137,18 @@ All formats are normalized to `https://www.youtube.com/watch?v=VIDEO_ID` before 
 
 | File | Purpose |
 |------|---------|
-| `extract_transcript.py` | Main script — Chrome lifecycle, CDP communication, DOM/API transcript extraction |
+| `src/yt_transcript/extractor.py` | Core — Chrome lifecycle, CDP communication, DOM/API transcript extraction |
+| `src/yt_transcript/cli.py` | CLI entry point, argument parsing, file saving |
+| `src/yt_transcript/__main__.py` | `python -m yt_transcript` support |
 | `extract` | Bash wrapper for CLI invocation |
-| `test_extract_transcript.py` | Unit tests (61 tests, runs in <1s) |
+| `tests/test_extractor.py` | Unit tests (61 tests, runs in <1s) |
 | `SKILL.md` | OpenClaw skill manifest |
 | `CLAUDE.md` | Developer/architecture notes |
 
 ## Testing
 
 ```bash
-python3 -m pytest test_extract_transcript.py -v
+PYTHONPATH=src python3 -m pytest tests/ -v
 ```
 
 All tests are fully mocked — no Chrome instance is needed to run them.

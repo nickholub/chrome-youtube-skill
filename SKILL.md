@@ -1,6 +1,6 @@
 ---
 name: youtube
-description: Summarize YouTube videos from links using the local chrome-youtube-transcript project. Use when a user sends a YouTube URL (youtube.com, youtu.be, shorts) and asks for a transcript, summary, key points, or breakdown. Extract transcript with this project’s Python tool, then return a concise actionable summary personalized to Nick’s projects, goals, and work style.
+description: Summarize YouTube videos from links using the local chrome-youtube-transcript project. Use when a user sends a YouTube URL (youtube.com, youtu.be, shorts) and asks for a transcript, summary, key points, or breakdown. Extract transcript with this project's Python tool, then return a concise actionable summary personalized to Nick's projects, goals, and work style.
 ---
 
 # YouTube Summary (project-backed)
@@ -12,7 +12,7 @@ Use this workflow every time this skill is invoked.
 Run:
 
 ```bash
-python3 /Users/nick/projects/chrome-youtube-summary/extract_transcript.py "<YOUTUBE_URL>" --json
+PYTHONPATH=/Users/nick/projects/chrome-youtube-summary/src python3 -m yt_transcript "<YOUTUBE_URL>" --json
 ```
 
 Rules:
@@ -24,7 +24,7 @@ Rules:
 
 If `success` is false:
 - Reply with a short failure note.
-- Include the tool’s error text.
+- Include the tool's error text.
 - Ask for another link or a retry.
 
 ## 3) Build summary in the exact target markdown shape
@@ -39,7 +39,7 @@ When extraction succeeds, build output with this exact structure:
 ### Key points
 - ...
 
-### 🎯 Relevant to you
+### Relevant to you
 - ...
 
 ### Actionable items
@@ -47,9 +47,9 @@ When extraction succeeds, build output with this exact structure:
 ```
 
 Content rules:
-- Key points: 5–8 bullets
-- Relevant to you: 3–5 bullets personalized to Nick
-- Actionable items: 3–5 concrete next steps
+- Key points: 5-8 bullets
+- Relevant to you: 3-5 bullets personalized to Nick
+- Actionable items: 3-5 concrete next steps
 
 Personalization targets for Nick:
 - OpenClaw monetization and skill/product opportunities
