@@ -12,8 +12,10 @@ Use this workflow every time this skill is invoked.
 Run:
 
 ```bash
-SKILL_DIR="$HOME/.codex/skills/youtube"
-PYTHONPATH="$SKILL_DIR/src" python3 -m yt_transcript "<YOUTUBE_URL>" --json
+CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
+SKILL_LINK="$CODEX_HOME_DIR/skills/youtube"
+SKILL_DIR="$(readlink "$SKILL_LINK" 2>/dev/null || printf '%s' "$SKILL_LINK")"
+"$SKILL_DIR/extract" "<YOUTUBE_URL>" --json
 ```
 
 Rules:
