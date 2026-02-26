@@ -1,0 +1,12 @@
+[project]
+name = "yt-transcript"
+version = "0.1.0"
+description = "YouTube transcript extractor via Chrome DevTools Protocol"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.20,<3",
+    "websocket-client>=1.0,<2",
+]
+
+[project.scripts]
+yt-transcript = "extract_transcript:main"

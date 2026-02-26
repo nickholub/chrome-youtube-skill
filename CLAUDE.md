@@ -5,6 +5,7 @@
 ```
 extract_transcript.py   # Main Python script - CDP connection + transcript extraction
 extract                 # Bash wrapper for CLI invocation
+pyproject.toml          # PEP 621 packaging metadata and dependencies
 SKILL.md                # OpenClaw skill manifest
 CLAUDE.md               # This file
 ```
@@ -29,9 +30,11 @@ Connects to a visible Chrome instance via CDP (Chrome DevTools Protocol) on `--r
 
 ## Dependencies
 
-- Python 3 stdlib (`json`, `sys`, `time`, `urllib.parse`)
-- `requests` — HTTP calls to CDP endpoints (open/close tab)
-- `websocket-client` — WebSocket to tab for `Runtime.evaluate`
+Defined in `pyproject.toml`. Install with `pip install .` or `pip install -e .` for development.
+
+- Python 3.10+ stdlib (`json`, `sys`, `time`, `argparse`, `logging`, `urllib.parse`)
+- `requests>=2.20,<3` — HTTP calls to CDP endpoints (open/close tab)
+- `websocket-client>=1.0,<2` — WebSocket to tab for `Runtime.evaluate`
 
 ## Chrome Management
 
@@ -46,8 +49,14 @@ python3 extract_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
 # JSON output
 python3 extract_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID" --json
 
+# Verbose/debug logging
+python3 extract_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID" -v
+
 # Via wrapper
 ./extract "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Via installed entry point (after pip install .)
+yt-transcript "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
 ## Ported From

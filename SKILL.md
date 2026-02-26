@@ -12,7 +12,7 @@ Use this workflow every time this skill is invoked.
 Run:
 
 ```bash
-python3 /Users/mike/projects/chrome-youtube-transcript/extract_transcript.py "<YOUTUBE_URL>" --json
+python3 /Users/nick/projects/chrome-youtube-summary/extract_transcript.py "<YOUTUBE_URL>" --json
 ```
 
 Rules:

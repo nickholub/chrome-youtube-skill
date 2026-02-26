@@ -1,6 +1,6 @@
 # YouTube Transcript Extractor
 
-Extract YouTube video transcripts by connecting to a visible Chrome instance via CDP (Chrome DevTools Protocol). Clicks "Show transcript" and reads the DOM — the same approach used by real users and the [ChromeAIHighlights](https://github.com/nicholasgasior/ChromeAIHighlights) extension.
+Extract YouTube video transcripts by connecting to a visible Chrome instance via CDP (Chrome DevTools Protocol). Clicks "Show transcript" and reads the DOM — the same approach used by real users.
 
 ## How It Works
 

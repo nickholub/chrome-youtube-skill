@@ -7,20 +7,40 @@ and extracts the text from the DOM — mimicking normal user behavior.
 
 Ported from ChromeAIHighlights/src/contentScript.js.
 """
+from __future__ import annotations
 
-import sys
+import argparse
 import json
-import time
+import logging
 import os
-import fcntl
 import shutil
 import subprocess
+import sys
+import time
+from typing import Any
+from urllib.parse import urlparse, parse_qs
+
 import requests
 import websocket
-from urllib.parse import urlparse, parse_qs
+
+# Cross-platform file locking
+if sys.platform == "win32":
+    import msvcrt
+
+    def _lock(f: Any) -> None:
+        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+else:
+    import fcntl
+
+    def _lock(f: Any) -> None:
+        fcntl.flock(f, fcntl.LOCK_EX)
+
+__version__ = "0.1.0"
 
 LOCK_FILE = "/tmp/yt-extract.lock"
 DEFAULT_OUTPUT_DIR = "/Users/Shared/yt_transcripts"
+
+log = logging.getLogger("yt-transcript")
 
 
 class YouTubeTranscriptExtractor:
@@ -32,13 +52,22 @@ class YouTubeTranscriptExtractor:
         "chromium",
     ]
 
-    def __init__(self, port=9222):
+    # Timing constants (seconds unless noted)
+    PAGE_LOAD_WAIT = 5
+    POST_KILL_WAIT = 1
+    PLAYER_POLL_INTERVAL = 1
+    JS_SEGMENT_SETTLE_MS = 500  # milliseconds, used in browser JS
+
+    # send_js timeout
+    SEND_JS_TIMEOUT = 30
+
+    def __init__(self, port: int = 9222) -> None:
         self.port = port
         self.base_url = f"http://127.0.0.1:{port}"
-        self._chrome_process = None
+        self._chrome_process: subprocess.Popen[bytes] | None = None
         self._user_data_dir = os.path.expanduser("~/.chrome-debug-profile")
 
-    def open_tab(self, url):
+    def open_tab(self, url: str) -> dict[str, Any]:
         """Open a new tab and return target info."""
         endpoint = f"{self.base_url}/json/new?{url}"
         resp = requests.put(endpoint, timeout=10)
@@ -47,7 +76,7 @@ class YouTubeTranscriptExtractor:
         resp.raise_for_status()
         return resp.json()
 
-    def close_tab(self, target_id):
+    def close_tab(self, target_id: str) -> None:
         """Close a tab by target ID."""
         try:
             requests.get(f"{self.base_url}/json/close/{target_id}", timeout=5)
@@ -56,7 +85,7 @@ class YouTubeTranscriptExtractor:
 
     # ── Chrome lifecycle ─────────────────────────────────────────
 
-    def _find_chrome(self):
+    def _find_chrome(self) -> str | None:
         """Find Chrome executable on this system."""
         for path in self.CHROME_PATHS:
             if os.path.isfile(path):
@@ -66,14 +95,14 @@ class YouTubeTranscriptExtractor:
                 return found
         return None
 
-    def _kill_existing_chrome(self):
+    def _kill_existing_chrome(self) -> None:
         """Kill any Chrome instance using our debug profile."""
         try:
             subprocess.run(
                 ["pkill", "-f", f"user-data-dir={self._user_data_dir}"],
                 capture_output=True, timeout=5,
             )
-            time.sleep(1)
+            time.sleep(self.POST_KILL_WAIT)
         except Exception:
             pass
         # Clean up stale lock files that prevent Chrome from starting
@@ -83,7 +112,7 @@ class YouTubeTranscriptExtractor:
             except OSError:
                 pass
 
-    def _launch_chrome(self):
+    def _launch_chrome(self) -> None:
         """Launch Chrome with remote debugging enabled."""
         chrome = self._find_chrome()
         if not chrome:
@@ -91,6 +120,7 @@ class YouTubeTranscriptExtractor:
                 "Chrome not found. Install Google Chrome or set it in PATH."
             )
         os.makedirs(self._user_data_dir, exist_ok=True)
+        log.info("Launching Chrome on port %d", self.port)
         self._chrome_process = subprocess.Popen(
             [
                 chrome,
@@ -104,13 +134,14 @@ class YouTubeTranscriptExtractor:
             stderr=subprocess.DEVNULL,
         )
 
-    def _wait_for_chrome(self, timeout=15):
+    def _wait_for_chrome(self, timeout: int = 15) -> None:
         """Wait for Chrome's CDP endpoint to respond."""
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
                 resp = requests.get(f"{self.base_url}/json/version", timeout=2)
                 if resp.status_code == 200:
+                    log.debug("Chrome CDP endpoint ready")
                     return
             except requests.ConnectionError:
                 pass
@@ -119,11 +150,12 @@ class YouTubeTranscriptExtractor:
             f"Chrome did not start within {timeout}s on port {self.port}"
         )
 
-    def _shutdown_chrome(self):
+    def _shutdown_chrome(self) -> None:
         """Terminate the Chrome process we launched."""
         proc = self._chrome_process
         if not proc:
             return
+        log.info("Shutting down Chrome (pid %d)", proc.pid)
         try:
             proc.terminate()
             proc.wait(timeout=5)
@@ -137,7 +169,7 @@ class YouTubeTranscriptExtractor:
                 pass
         self._chrome_process = None
 
-    def send_js(self, ws, script, msg_id=1):
+    def send_js(self, ws: websocket.WebSocket, script: str, msg_id: int = 1) -> dict[str, Any]:
         """Send JS for evaluation and wait for the matching response."""
         ws.send(json.dumps({
             "id": msg_id,
@@ -148,12 +180,17 @@ class YouTubeTranscriptExtractor:
                 "awaitPromise": True,
             }
         }))
-        while True:
-            data = json.loads(ws.recv())
+        deadline = time.time() + self.SEND_JS_TIMEOUT
+        while time.time() < deadline:
+            try:
+                data = json.loads(ws.recv())
+            except websocket.WebSocketConnectionClosedException:
+                raise RuntimeError("WebSocket closed while waiting for JS response")
             if data.get("id") == msg_id:
                 return data
+        raise TimeoutError(f"send_js timed out after {self.SEND_JS_TIMEOUT}s waiting for msg_id={msg_id}")
 
-    def extract_transcript(self, url):
+    def extract_transcript(self, url: str) -> dict[str, Any]:
         """
         Open YouTube URL in visible Chrome, extract transcript via DOM, close tab.
         Acquires an exclusive file lock so concurrent invocations run sequentially.
@@ -163,11 +200,11 @@ class YouTubeTranscriptExtractor:
             return self._result(error="Could not parse video ID from URL")
 
         canonical_url = f"https://www.youtube.com/watch?v={video_id}"
-        target = None
-        ws = None
+        target: dict[str, Any] | None = None
+        ws: websocket.WebSocket | None = None
 
         with open(LOCK_FILE, "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            _lock(lock)
             try:
                 # Launch a fresh Chrome instance
                 self._kill_existing_chrome()
@@ -175,10 +212,11 @@ class YouTubeTranscriptExtractor:
                 self._wait_for_chrome()
 
                 target = self.open_tab(canonical_url)
+                log.info("Opened tab for %s", canonical_url)
 
                 # Wait for page to load before connecting WebSocket
                 # (navigating resets the WS connection)
-                time.sleep(5)
+                time.sleep(self.PAGE_LOAD_WAIT)
 
                 ws = websocket.create_connection(
                     target["webSocketDebuggerUrl"], timeout=30
@@ -189,13 +227,16 @@ class YouTubeTranscriptExtractor:
 
                 # Get video metadata from ytInitialPlayerResponse
                 meta = self._get_metadata(ws, msg_id=2)
+                log.debug("Metadata: %s", meta)
 
                 # Try DOM extraction: click "Show transcript" and scrape
+                log.info("Attempting DOM extraction")
                 transcript = self._extract_from_dom(ws, msg_id=10)
 
                 # Fallback: try API-based extraction via in-page fetch
                 method = "dom"
                 if not transcript:
+                    log.info("DOM extraction failed, falling back to API method")
                     transcript = self._extract_from_api(ws, msg_id=20)
                     method = "api"
 
@@ -207,6 +248,7 @@ class YouTubeTranscriptExtractor:
                         error="No transcript found. Video may not have captions.",
                     )
 
+                log.info("Extraction succeeded via %s method", method)
                 return self._result(
                     success=True, video_id=video_id, url=canonical_url,
                     title=meta.get("title", ""),
@@ -216,6 +258,7 @@ class YouTubeTranscriptExtractor:
                 )
 
             except Exception as e:
+                log.error("Extraction failed: %s", e)
                 return self._result(
                     video_id=video_id, url=canonical_url, error=str(e)
                 )
@@ -231,7 +274,7 @@ class YouTubeTranscriptExtractor:
 
     # ── Page helpers ──────────────────────────────────────────────
 
-    def _wait_for_player_response(self, ws, max_wait=15):
+    def _wait_for_player_response(self, ws: websocket.WebSocket, max_wait: int = 15) -> None:
         """Poll until ytInitialPlayerResponse is available."""
         deadline = time.time() + max_wait
         while time.time() < deadline:
@@ -239,10 +282,11 @@ class YouTubeTranscriptExtractor:
             resp = self.send_js(ws, js, msg_id=999)
             val = resp.get("result", {}).get("result", {}).get("value")
             if val == "true":
+                log.debug("ytInitialPlayerResponse ready")
                 return
-            time.sleep(1)
+            time.sleep(self.PLAYER_POLL_INTERVAL)
 
-    def _get_metadata(self, ws, msg_id=2):
+    def _get_metadata(self, ws: websocket.WebSocket, msg_id: int = 2) -> dict[str, str]:
         """Extract title, channel, language from ytInitialPlayerResponse."""
         js = """
         (function() {
@@ -268,61 +312,61 @@ class YouTubeTranscriptExtractor:
 
     # ── DOM extraction (primary) ──────────────────────────────────
 
-    def _extract_from_dom(self, ws, msg_id=10):
+    def _extract_from_dom(self, ws: websocket.WebSocket, msg_id: int = 10) -> str | None:
         """
         Click "Show transcript" button and extract text from the transcript panel.
         Exactly mirrors ChromeAIHighlights extractTranscriptFromDOM().
         """
-        js = """
-        (async function() {
-            function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+        js = f"""
+        (async function() {{
+            function sleep(ms) {{ return new Promise(r => setTimeout(r, ms)); }}
 
-            function waitForEl(sel, timeout) {
-                return new Promise((resolve, reject) => {
+            function waitForEl(sel, timeout) {{
+                return new Promise((resolve, reject) => {{
                     var el = document.querySelector(sel);
                     if (el) return resolve(el);
-                    var obs = new MutationObserver(() => {
+                    var obs = new MutationObserver(() => {{
                         var el = document.querySelector(sel);
-                        if (el) { obs.disconnect(); resolve(el); }
-                    });
-                    obs.observe(document.body, {childList: true, subtree: true});
-                    setTimeout(() => { obs.disconnect(); reject(new Error('timeout')); }, timeout);
-                });
-            }
+                        if (el) {{ obs.disconnect(); resolve(el); }}
+                    }});
+                    obs.observe(document.body, {{childList: true, subtree: true}});
+                    setTimeout(() => {{ obs.disconnect(); reject(new Error('timeout')); }}, timeout);
+                }});
+            }}
 
-            try {
+            try {{
                 // Find the "Show transcript" button
                 var button;
-                try {
+                try {{
                     button = await waitForEl(
                         'ytd-video-description-transcript-section-renderer button', 8000
                     );
-                } catch(e) {
-                    return JSON.stringify({error: 'no_button'});
-                }
+                }} catch(e) {{
+                    return JSON.stringify({{error: 'no_button'}});
+                }}
 
                 // Check if panel is already open
                 var container = document.querySelector('#segments-container');
                 var wasOpen = !!container;
 
-                if (!wasOpen) {
+                if (!wasOpen) {{
                     button.click();
-                    try {
+                    try {{
                         container = await waitForEl('#segments-container', 5000);
-                    } catch(e) {
-                        return JSON.stringify({error: 'no_container'});
-                    }
-                }
+                    }} catch(e) {{
+                        return JSON.stringify({{error: 'no_container'}});
+                    }}
+                }}
 
                 // Wait for segments to populate
-                await sleep(500);
+                await sleep({self.JS_SEGMENT_SETTLE_MS});
 
                 // Extract text from segments
                 var segs = container.querySelectorAll('yt-formatted-string.segment-text');
                 if (!segs.length) segs = container.querySelectorAll('yt-formatted-string');
 
                 var text = Array.from(segs)
-                    .map(function(el) { return (el.textContent || '').trim(); })
+                    .map(function(el) {{ return (el.textContent || '').trim(); }})
                     .filter(Boolean)
                     .join(' ')
                     .replace(/\\s+/g, ' ')
@@ -331,11 +375,11 @@ class YouTubeTranscriptExtractor:
                 // Close panel if we opened it
                 if (!wasOpen && button) button.click();
 
-                return JSON.stringify({text: text || ''});
-            } catch(e) {
-                return JSON.stringify({error: e.message});
-            }
-        })()
+                return JSON.stringify({{text: text || ''}});
+            }} catch(e) {{
+                return JSON.stringify({{error: e.message}});
+            }}
+        }})()
         """
         resp = self.send_js(ws, js, msg_id)
         value = resp.get("result", {}).get("result", {}).get("value")
@@ -350,7 +394,7 @@ class YouTubeTranscriptExtractor:
 
     # ── API extraction (fallback) ─────────────────────────────────
 
-    def _extract_from_api(self, ws, msg_id=20):
+    def _extract_from_api(self, ws: websocket.WebSocket, msg_id: int = 20) -> str | None:
         """
         Fallback: fetch caption track URL from ytInitialPlayerResponse,
         then fetch + parse it in-browser with credentials.
@@ -416,7 +460,7 @@ class YouTubeTranscriptExtractor:
 
     # ── Utilities ─────────────────────────────────────────────────
 
-    def _parse_video_id(self, url):
+    def _parse_video_id(self, url: str) -> str | None:
         """Extract video ID from various YouTube URL formats."""
         parsed = urlparse(url)
         if parsed.hostname in ("www.youtube.com", "youtube.com", "m.youtube.com"):
@@ -430,8 +474,18 @@ class YouTubeTranscriptExtractor:
             return parsed.path.lstrip("/").split("/")[0]
         return None
 
-    def _result(self, success=False, video_id="", url="", title="",
-                channel="", transcript="", language="", method="", error=""):
+    def _result(
+        self,
+        success: bool = False,
+        video_id: str = "",
+        url: str = "",
+        title: str = "",
+        channel: str = "",
+        transcript: str = "",
+        language: str = "",
+        method: str = "",
+        error: str = "",
+    ) -> dict[str, Any]:
         return {
             "success": success,
             "video_id": video_id,
@@ -445,7 +499,7 @@ class YouTubeTranscriptExtractor:
         }
 
 
-def _sanitize_filename(value):
+def _sanitize_filename(value: str) -> str:
     """Sanitize filename for cross-platform safety."""
     if not value:
         return "untitled"
@@ -454,7 +508,7 @@ def _sanitize_filename(value):
     return " ".join(value.split()).strip() or "untitled"
 
 
-def _save_transcript(result, output_dir):
+def _save_transcript(result: dict[str, Any], output_dir: str) -> str:
     """Save successful transcript to disk and return file path."""
     os.makedirs(output_dir, exist_ok=True)
     channel = _sanitize_filename(result.get("channel") or "unknown-channel")
@@ -467,52 +521,40 @@ def _save_transcript(result, output_dir):
     return path
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: extract_transcript.py <youtube-url> [--json] [--port 9222] [--output-dir PATH] [--no-save]", file=sys.stderr)
-        print("       echo '<url>' | extract_transcript.py --stdin [--json] [--output-dir PATH] [--no-save]", file=sys.stderr)
-        sys.exit(1)
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Extract YouTube video transcripts via Chrome DevTools Protocol.",
+    )
+    parser.add_argument("url", nargs="?", default=None, help="YouTube video URL")
+    parser.add_argument("--json", action="store_true", dest="output_json", help="output as JSON")
+    parser.add_argument("--port", type=int, default=9222, help="Chrome CDP port (default: 9222)")
+    parser.add_argument("--stdin", action="store_true", help="read URL from stdin")
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help=f"transcript output directory (default: {DEFAULT_OUTPUT_DIR})")
+    parser.add_argument("--no-save", action="store_true", help="skip saving transcript to disk")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
-    output_json = False
-    port = 9222
-    url = None
-    use_stdin = False
-    output_dir = DEFAULT_OUTPUT_DIR
-    save_output = True
+    args = parser.parse_args()
 
-    args = sys.argv[1:]
-    i = 0
-    while i < len(args):
-        if args[i] == "--json":
-            output_json = True
-        elif args[i] == "--port" and i + 1 < len(args):
-            port = int(args[i + 1])
-            i += 1
-        elif args[i] == "--stdin":
-            use_stdin = True
-        elif args[i] == "--output-dir" and i + 1 < len(args):
-            output_dir = os.path.expanduser(args[i + 1])
-            i += 1
-        elif args[i] == "--no-save":
-            save_output = False
-        elif not args[i].startswith("--") and url is None:
-            url = args[i]
-        i += 1
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s",
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+    )
 
-    if use_stdin:
+    url = args.url
+    if args.stdin:
         url = sys.stdin.readline().strip()
 
     if not url:
-        print("Error: No URL provided", file=sys.stderr)
-        sys.exit(1)
+        parser.error("No URL provided. Pass a URL or use --stdin.")
 
-    extractor = YouTubeTranscriptExtractor(port=port)
+    extractor = YouTubeTranscriptExtractor(port=args.port)
     result = extractor.extract_transcript(url)
 
-    if result.get("success") and save_output:
-        result["output_file"] = _save_transcript(result, output_dir)
+    if result.get("success") and not args.no_save:
+        result["output_file"] = _save_transcript(result, os.path.expanduser(args.output_dir))
 
-    if output_json:
+    if args.output_json:
         print(json.dumps(result, indent=2))
     else:
         if result["success"]:
