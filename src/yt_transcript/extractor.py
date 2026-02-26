@@ -17,10 +17,13 @@ import tempfile
 import sys
 import time
 from typing import Any
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 import requests
 import websocket
+
+_JS_DIR = Path(__file__).parent / "js"
 
 # Cross-platform file locking
 if sys.platform == "win32":
@@ -270,6 +273,11 @@ class YouTubeTranscriptExtractor:
                     self.close_tab(target["id"])
                 self._shutdown_chrome()
 
+    @staticmethod
+    def _extract_value(resp: dict[str, Any]) -> Any:
+        """Extract the value from a CDP Runtime.evaluate response."""
+        return resp.get("result", {}).get("result", {}).get("value")
+
     # ── Page helpers ──────────────────────────────────────────────
 
     def _wait_for_player_response(self, ws: websocket.WebSocket, max_wait: int = 15) -> None:
@@ -278,31 +286,20 @@ class YouTubeTranscriptExtractor:
         while time.time() < deadline:
             js = "(!!window.ytInitialPlayerResponse).toString()"
             resp = self.send_js(ws, js, msg_id=999)
-            val = resp.get("result", {}).get("result", {}).get("value")
+            val = self._extract_value(resp)
             if val == "true":
                 log.debug("ytInitialPlayerResponse ready")
                 return
             time.sleep(self.PLAYER_POLL_INTERVAL)
+        raise TimeoutError(
+            f"ytInitialPlayerResponse not available after {max_wait}s"
+        )
 
     def _get_metadata(self, ws: websocket.WebSocket, msg_id: int = 2) -> dict[str, str]:
         """Extract title, channel, language from ytInitialPlayerResponse."""
-        js = """
-        (function() {
-            var pr = window.ytInitialPlayerResponse;
-            if (!pr) return JSON.stringify({});
-            var title = '', channel = '', lang = '';
-            try { title = pr.videoDetails.title || ''; } catch(e) {}
-            try { channel = pr.videoDetails.author || ''; } catch(e) {}
-            try {
-                var tracks = pr.captions.playerCaptionsTracklistRenderer.captionTracks;
-                var t = tracks.find(function(t) { return t.languageCode && t.languageCode.startsWith('en'); }) || tracks[0];
-                lang = t ? t.languageCode : '';
-            } catch(e) {}
-            return JSON.stringify({title: title, channel: channel, language: lang});
-        })()
-        """
+        js = (_JS_DIR / "get_metadata.js").read_text()
         resp = self.send_js(ws, js, msg_id)
-        value = resp.get("result", {}).get("result", {}).get("value", "{}")
+        value = self._extract_value(resp) or "{}"
         try:
             return json.loads(value)
         except (json.JSONDecodeError, TypeError):
@@ -315,72 +312,11 @@ class YouTubeTranscriptExtractor:
         Click "Show transcript" button and extract text from the transcript panel.
         Exactly mirrors ChromeAIHighlights extractTranscriptFromDOM().
         """
-        js = f"""
-        (async function() {{
-            function sleep(ms) {{ return new Promise(r => setTimeout(r, ms)); }}
-
-            function waitForEl(sel, timeout) {{
-                return new Promise((resolve, reject) => {{
-                    var el = document.querySelector(sel);
-                    if (el) return resolve(el);
-                    var obs = new MutationObserver(() => {{
-                        var el = document.querySelector(sel);
-                        if (el) {{ obs.disconnect(); resolve(el); }}
-                    }});
-                    obs.observe(document.body, {{childList: true, subtree: true}});
-                    setTimeout(() => {{ obs.disconnect(); reject(new Error('timeout')); }}, timeout);
-                }});
-            }}
-
-            try {{
-                // Find the "Show transcript" button
-                var button;
-                try {{
-                    button = await waitForEl(
-                        'ytd-video-description-transcript-section-renderer button', 8000
-                    );
-                }} catch(e) {{
-                    return JSON.stringify({{error: 'no_button'}});
-                }}
-
-                // Check if panel is already open
-                var container = document.querySelector('#segments-container');
-                var wasOpen = !!container;
-
-                if (!wasOpen) {{
-                    button.click();
-                    try {{
-                        container = await waitForEl('#segments-container', 5000);
-                    }} catch(e) {{
-                        return JSON.stringify({{error: 'no_container'}});
-                    }}
-                }}
-
-                // Wait for segments to populate
-                await sleep({self.JS_SEGMENT_SETTLE_MS});
-
-                // Extract text from segments
-                var segs = container.querySelectorAll('yt-formatted-string.segment-text');
-                if (!segs.length) segs = container.querySelectorAll('yt-formatted-string');
-
-                var text = Array.from(segs)
-                    .map(function(el) {{ return (el.textContent || '').trim(); }})
-                    .filter(Boolean)
-                    .join(' ')
-                    .replace(/\\s+/g, ' ')
-                    .trim();
-
-                // Close panel if we opened it
-                if (!wasOpen && button) button.click();
-
-                return JSON.stringify({{text: text || ''}});
-            }} catch(e) {{
-                return JSON.stringify({{error: e.message}});
-            }}
-        }})()
-        """
+        js = (_JS_DIR / "extract_dom.js").read_text().replace(
+            "{{SETTLE_MS}}", str(self.JS_SEGMENT_SETTLE_MS)
+        )
         resp = self.send_js(ws, js, msg_id)
-        value = resp.get("result", {}).get("result", {}).get("value")
+        value = self._extract_value(resp)
         if not value:
             return None
         try:
@@ -397,56 +333,9 @@ class YouTubeTranscriptExtractor:
         Fallback: fetch caption track URL from ytInitialPlayerResponse,
         then fetch + parse it in-browser with credentials.
         """
-        js = """
-        (async function() {
-            try {
-                var pr = window.ytInitialPlayerResponse;
-                if (!pr) return JSON.stringify({error: 'no player response'});
-
-                var tracks = [];
-                try {
-                    tracks = pr.captions.playerCaptionsTracklistRenderer.captionTracks || [];
-                } catch(e) {}
-                if (!tracks.length) return JSON.stringify({error: 'no tracks'});
-
-                var track = tracks.find(function(t) {
-                    return t.languageCode && t.languageCode.startsWith('en');
-                }) || tracks[0];
-
-                var url = track.baseUrl;
-                if (url.indexOf('fmt=') === -1) url += '&fmt=json3';
-
-                var res = await fetch(url, {credentials: 'include'});
-                if (!res.ok) {
-                    // Try XML fallback
-                    var xmlUrl = track.baseUrl.replace(/&fmt=[^&]*/, '');
-                    var xmlRes = await fetch(xmlUrl, {credentials: 'include'});
-                    if (!xmlRes.ok) return JSON.stringify({error: 'fetch failed: ' + res.status});
-                    var xmlText = await xmlRes.text();
-                    var parser = new DOMParser();
-                    var doc = parser.parseFromString(xmlText, 'text/xml');
-                    var nodes = Array.from(doc.getElementsByTagName('text'));
-                    var lines = nodes.map(function(n) { return n.textContent || ''; }).filter(Boolean);
-                    return JSON.stringify({text: lines.join(' ').replace(/\\s+/g, ' ').trim()});
-                }
-
-                var data = await res.json();
-                var events = data.events || [];
-                var lines = [];
-                for (var i = 0; i < events.length; i++) {
-                    var segs = events[i].segs;
-                    if (!segs) continue;
-                    var line = segs.map(function(s) { return s.utf8 || ''; }).join('').trim();
-                    if (line) lines.push(line);
-                }
-                return JSON.stringify({text: lines.join(' ').replace(/\\s+/g, ' ').trim()});
-            } catch(e) {
-                return JSON.stringify({error: e.message});
-            }
-        })()
-        """
+        js = (_JS_DIR / "extract_api.js").read_text()
         resp = self.send_js(ws, js, msg_id)
-        value = resp.get("result", {}).get("result", {}).get("value")
+        value = self._extract_value(resp)
         if not value:
             return None
         try:

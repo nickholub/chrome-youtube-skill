@@ -8,6 +8,10 @@ src/yt_transcript/
     extractor.py        # CDP connection + transcript extraction
     cli.py              # CLI entry point, file saving
     __main__.py         # python -m yt_transcript support
+    js/                 # JavaScript snippets executed in Chrome via CDP
+        get_metadata.js     # Extract title, channel, language from ytInitialPlayerResponse
+        extract_dom.js      # Click "Show transcript" and scrape DOM
+        extract_api.js      # Fallback: fetch caption track URL via in-page fetch
 tests/
     __init__.py
     test_extractor.py   # Unit tests

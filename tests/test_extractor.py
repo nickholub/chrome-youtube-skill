@@ -556,6 +556,21 @@ class TestWaitForPlayerResponse(unittest.TestCase):
         self.assertEqual(ws.send.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
 
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.time.time")
+    def test_raises_on_timeout(self, mock_time, mock_sleep):
+        # Provide enough time() values for the _wait loop + send_js inner loops.
+        # After one poll iteration, jump past the deadline.
+        mock_time.side_effect = [0] * 10 + [20] * 10
+        ws = MagicMock()
+        ws.recv.return_value = json.dumps({
+            "id": 999, "result": {"result": {"value": "false"}}
+        })
+
+        with self.assertRaises(TimeoutError) as ctx:
+            self.ext._wait_for_player_response(ws, max_wait=15)
+        self.assertIn("ytInitialPlayerResponse", str(ctx.exception))
+
 
 class TestMainCli(unittest.TestCase):
     @patch("yt_transcript.cli.YouTubeTranscriptExtractor")
@@ -845,6 +860,91 @@ class TestMainCliStdin(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             main()
         self.assertEqual(ctx.exception.code, 1)
+
+
+class TestSanitizeFilename(unittest.TestCase):
+    def setUp(self):
+        from yt_transcript.cli import _sanitize_filename
+        self.sanitize = _sanitize_filename
+
+    def test_removes_path_separators(self):
+        self.assertNotIn("/", self.sanitize("a/b\\c"))
+        self.assertNotIn("\\", self.sanitize("a/b\\c"))
+
+    def test_removes_special_chars(self):
+        result = self.sanitize('file:name*"test"<>|')
+        for ch in ':*"<>|':
+            self.assertNotIn(ch, result)
+
+    def test_collapses_whitespace(self):
+        self.assertEqual(self.sanitize("  a   b  "), "a b")
+
+    def test_empty_string_returns_untitled(self):
+        self.assertEqual(self.sanitize(""), "untitled")
+
+    def test_all_special_chars_become_underscores(self):
+        result = self.sanitize('/:*?"<>|')
+        self.assertTrue(all(c == "_" for c in result.replace(" ", "")))
+
+    def test_normal_string_unchanged(self):
+        self.assertEqual(self.sanitize("My Video Title"), "My Video Title")
+
+    def test_unicode_preserved(self):
+        self.assertEqual(self.sanitize("日本語タイトル"), "日本語タイトル")
+
+
+class TestSaveTranscript(unittest.TestCase):
+    def setUp(self):
+        from yt_transcript.cli import _save_transcript
+        self.save = _save_transcript
+
+    def test_saves_file_with_correct_content(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = {
+                "channel": "TestChannel",
+                "title": "TestTitle",
+                "video_id": "abc123",
+                "transcript": "Hello world transcript",
+            }
+            path = self.save(result, tmpdir)
+            self.assertTrue(os.path.isfile(path))
+            with open(path, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "Hello world transcript")
+
+    def test_filename_format(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = {
+                "channel": "MyChannel",
+                "title": "MyTitle",
+                "video_id": "xyz789",
+                "transcript": "text",
+            }
+            path = self.save(result, tmpdir)
+            filename = os.path.basename(path)
+            self.assertEqual(filename, "MyChannel - MyTitle [xyz789].txt")
+
+    def test_missing_fields_use_defaults(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = {"transcript": "text"}
+            path = self.save(result, tmpdir)
+            filename = os.path.basename(path)
+            self.assertEqual(filename, "unknown-channel - untitled [video].txt")
+
+    def test_creates_output_dir(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            nested = os.path.join(tmpdir, "a", "b", "c")
+            result = {
+                "channel": "Ch",
+                "title": "T",
+                "video_id": "id",
+                "transcript": "t",
+            }
+            path = self.save(result, nested)
+            self.assertTrue(os.path.isfile(path))
 
 
 if __name__ == "__main__":
