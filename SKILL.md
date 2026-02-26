@@ -1,6 +1,6 @@
 ---
 name: youtube
-description: Summarize YouTube videos from links using the local chrome-youtube-skill project. Use when a user shares a YouTube URL (youtube.com, youtu.be, shorts) and asks for a transcript, summary, key points, or breakdown. Extract transcript with this project's Python tool, then return a concise actionable summary personalized to Nick's projects, goals, and work style.
+description: Summarize YouTube videos from links using the local chrome-youtube-skill project. Use when a user shares a YouTube URL (youtube.com, youtu.be, shorts) and asks for a transcript, summary, key points, or breakdown. Extract transcript with this project's Python tool, then return a concise actionable summary personalized to the user's projects, goals, and work style.
 ---
 
 # YouTube Summary (project-backed)
@@ -12,7 +12,7 @@ Use this workflow every time this skill is invoked.
 Run:
 
 ```bash
-SKILL_DIR="/Users/nick/.codex/skills/youtube"
+SKILL_DIR="$HOME/.codex/skills/youtube"
 PYTHONPATH="$SKILL_DIR/src" python3 -m yt_transcript "<YOUTUBE_URL>" --json
 ```
 
@@ -49,10 +49,10 @@ When extraction succeeds, build output with this exact structure:
 
 Content rules:
 - Key points: 5-8 bullets
-- Relevant to you: 3-5 bullets personalized to Nick
+- Relevant to you: 3-5 bullets personalized
 - Actionable items: 3-5 concrete next steps
 
-Personalization targets for Nick:
+Personalization targets for the user:
 - OpenClaw monetization and skill/product opportunities
 - Shipping habits, distribution consistency, and creator workflow
 - Builder-first decisions for indie products (pricing, positioning, MVP scope)
