@@ -16,6 +16,8 @@ tests/
     __init__.py
     test_extractor.py   # Unit tests
 extract                 # Bash wrapper for CLI invocation
+scripts/
+    run_transcript.py   # Run from repo without installation
 pyproject.toml          # PEP 621 packaging metadata and dependencies
 SKILL.md                # OpenClaw skill manifest
 CLAUDE.md               # This file

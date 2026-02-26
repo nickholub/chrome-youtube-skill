@@ -58,6 +58,8 @@ Everything happens in a real, visible Chrome window. The script clicks buttons a
 **Install Python dependencies:**
 
 ```bash
+pip install .             # from project root (uses pyproject.toml)
+# or manually:
 pip3 install requests websocket-client
 ```
 
@@ -70,7 +72,7 @@ Chrome is found automatically. The script searches these paths in order:
 ## Usage
 
 ```bash
-# Plain text output (also saves transcript file)
+# Plain text output
 ./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 # JSON output
@@ -138,11 +140,15 @@ All formats are normalized to `https://www.youtube.com/watch?v=VIDEO_ID` before 
 
 | File | Purpose |
 |------|---------|
-| `src/yt_transcript/extractor.py` | Core — Chrome lifecycle, CDP communication, DOM/API transcript extraction |
+| `src/yt_transcript/__init__.py` | Package exports, `__version__` |
+| `src/yt_transcript/extractor.py` | Core — Chrome lifecycle, CDP communication, transcript extraction |
 | `src/yt_transcript/cli.py` | CLI entry point, argument parsing, file saving |
 | `src/yt_transcript/__main__.py` | `python -m yt_transcript` support |
+| `src/yt_transcript/js/` | JavaScript snippets executed in Chrome via CDP (DOM extraction, API fallback, metadata) |
 | `extract` | Bash wrapper for CLI invocation |
-| `tests/test_extractor.py` | Unit tests (61 tests, runs in <1s) |
+| `scripts/run_transcript.py` | Run from repo without installation (sets up `sys.path`) |
+| `tests/test_extractor.py` | Unit tests (73 tests, runs in <1s) |
+| `pyproject.toml` | PEP 621 packaging metadata and dependencies |
 | `SKILL.md` | OpenClaw skill manifest |
 | `CLAUDE.md` | Developer/architecture notes |
 
@@ -156,27 +162,9 @@ All tests are fully mocked — no Chrome instance is needed to run them.
 
 ## Sequential Execution Lock
 
-The script uses an exclusive file lock (`fcntl.flock` on `/tmp/yt-extract.lock`) to ensure only one extraction runs at a time. If you invoke the script twice concurrently, the second invocation blocks until the first one finishes.
+The script uses an exclusive file lock on `/tmp/yt-extract.lock` (`fcntl.flock` on Unix, `msvcrt.locking` on Windows) to ensure only one extraction runs at a time. If you invoke the script twice concurrently, the second invocation blocks until the first one finishes.
 
-**How the lock is released:**
-
-| Scenario | Lock released? | Mechanism |
-|----------|---------------|-----------|
-| Extraction completes successfully | Yes | `with` block exits, file closes, lock released |
-| Extraction raises an exception | Yes | `with` block exits on exception, file closes, lock released |
-| Process killed (`SIGTERM`, `SIGKILL`, `kill -9`) | Yes | OS releases `flock` locks when the owning process dies |
-| Machine reboots / power loss | Yes | `/tmp` is cleared on boot; `flock` doesn't survive process death anyway |
-
-The lock is tied to the process lifetime, not to the file on disk. There is no risk of a stuck lock preventing future runs. Even if the script crashes mid-extraction, the next invocation will acquire the lock immediately.
-
-**Manual release (not normally needed):**
-
-```bash
-# If you somehow need to clear it, just remove the file
-rm /tmp/yt-extract.lock
-```
-
-Removing the file is harmless — the script recreates it on each run. But in practice you should never need to do this, since `flock` locks are always released when the process exits.
+The lock is explicitly released and the lock file is deleted in a `finally` block after each run. If the process is killed before cleanup, the OS releases the lock when the owning process dies, and the script recreates the file on the next run.
 
 ## Limitations
 
