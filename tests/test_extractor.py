@@ -5,6 +5,8 @@ import json
 import os
 import subprocess
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from unittest.mock import patch, MagicMock, call
 
 import requests
@@ -528,7 +530,7 @@ class TestWaitForPlayerResponse(unittest.TestCase):
     @patch("yt_transcript.extractor.time.sleep")
     @patch("yt_transcript.extractor.time.time")
     def test_returns_immediately_when_ready(self, mock_time, mock_sleep):
-        mock_time.side_effect = [0, 0, 0, 0]  # _wait loop + send_js deadline
+        mock_time.side_effect = [0] * 10  # _wait loop + send_js deadline/remaining
         ws = MagicMock()
         ws.recv.return_value = json.dumps({
             "id": 999, "result": {"result": {"value": "true"}}
@@ -541,10 +543,9 @@ class TestWaitForPlayerResponse(unittest.TestCase):
     @patch("yt_transcript.extractor.time.sleep")
     @patch("yt_transcript.extractor.time.time")
     def test_polls_until_ready(self, mock_time, mock_sleep):
-        # time() returns: _wait start, send_js deadline, send_js check,
-        # _wait check, send_js deadline, send_js check,
-        # _wait check, send_js deadline, send_js check
-        mock_time.side_effect = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3]
+        # Provide enough time() values for multiple send_js calls
+        # (each call uses time() for deadline, remaining check, and loop check)
+        mock_time.side_effect = [0] * 5 + [1] * 5 + [2] * 5 + [3] * 5
         ws = MagicMock()
         ws.recv.side_effect = [
             json.dumps({"id": 999, "result": {"result": {"value": "false"}}}),
@@ -584,15 +585,10 @@ class TestMainCli(unittest.TestCase):
         }
 
         from yt_transcript.cli import main
-        from io import StringIO
-        import sys
 
         captured = StringIO()
-        sys.stdout = captured
-        try:
+        with redirect_stdout(captured):
             main()
-        finally:
-            sys.stdout = sys.__stdout__
 
         output = json.loads(captured.getvalue())
         self.assertTrue(output["success"])
@@ -609,15 +605,10 @@ class TestMainCli(unittest.TestCase):
         }
 
         from yt_transcript.cli import main
-        from io import StringIO
-        import sys
 
         captured = StringIO()
-        sys.stdout = captured
-        try:
+        with redirect_stdout(captured):
             main()
-        finally:
-            sys.stdout = sys.__stdout__
 
         output = captured.getvalue()
         self.assertIn("Title: My Title", output)
@@ -642,15 +633,10 @@ class TestMainCli(unittest.TestCase):
         }
 
         from yt_transcript.cli import main
-        from io import StringIO
-        import sys
 
         captured = StringIO()
-        sys.stdout = captured
-        try:
+        with redirect_stdout(captured):
             main()
-        finally:
-            sys.stdout = sys.__stdout__
 
         MockExtractor.assert_called_with(port=9333)
 
@@ -685,13 +671,13 @@ class TestKillExistingChrome(unittest.TestCase):
     @patch("os.remove")
     @patch("yt_transcript.extractor.time.sleep")
     @patch("yt_transcript.extractor.subprocess.run")
-    def test_calls_pkill(self, mock_run, mock_sleep, mock_remove):
+    def test_calls_process_kill(self, mock_run, mock_sleep, mock_remove):
         self.ext._kill_existing_chrome()
         mock_run.assert_called_once()
         args = mock_run.call_args[0][0]
-        self.assertEqual(args[0], "pkill")
-        self.assertEqual(args[1], "-f")
-        self.assertIn(self.ext._user_data_dir, args[2])
+        # Should use platform-appropriate command with the user data dir
+        cmd_str = " ".join(args)
+        self.assertIn(self.ext._user_data_dir, cmd_str)
 
     @patch("os.remove")
     @patch("yt_transcript.extractor.time.sleep")
@@ -829,15 +815,10 @@ class TestMainCliStdin(unittest.TestCase):
         }
 
         from yt_transcript.cli import main
-        from io import StringIO
-        import sys
 
         captured = StringIO()
-        sys.stdout = captured
-        try:
+        with redirect_stdout(captured):
             main()
-        finally:
-            sys.stdout = sys.__stdout__
 
         output = json.loads(captured.getvalue())
         self.assertEqual(output["transcript"], "stdin text")

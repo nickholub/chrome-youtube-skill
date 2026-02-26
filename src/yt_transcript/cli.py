@@ -7,7 +7,8 @@ import logging
 import os
 import sys
 
-from .extractor import YouTubeTranscriptExtractor, __version__
+from . import __version__
+from .extractor import YouTubeTranscriptExtractor
 
 
 def _sanitize_filename(value: str) -> str:

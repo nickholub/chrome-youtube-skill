@@ -18,7 +18,7 @@ import sys
 import time
 from typing import Any
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import quote, urlparse, parse_qs
 
 import requests
 import websocket
@@ -31,13 +31,17 @@ if sys.platform == "win32":
 
     def _lock(f: Any) -> None:
         msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+
+    def _unlock(f: Any) -> None:
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
 else:
     import fcntl
 
     def _lock(f: Any) -> None:
         fcntl.flock(f, fcntl.LOCK_EX)
 
-__version__ = "0.1.0"
+    def _unlock(f: Any) -> None:
+        fcntl.flock(f, fcntl.LOCK_UN)
 
 LOCK_FILE = os.path.join(tempfile.gettempdir(), "yt-extract.lock")
 
@@ -70,7 +74,7 @@ class YouTubeTranscriptExtractor:
 
     def open_tab(self, url: str) -> dict[str, Any]:
         """Open a new tab and return target info."""
-        endpoint = f"{self.base_url}/json/new?{url}"
+        endpoint = f"{self.base_url}/json/new?{quote(url, safe='')}"
         resp = requests.put(endpoint, timeout=10)
         if resp.status_code == 405:
             resp = requests.get(endpoint, timeout=10)
@@ -82,7 +86,7 @@ class YouTubeTranscriptExtractor:
         try:
             requests.get(f"{self.base_url}/json/close/{target_id}", timeout=5)
         except Exception:
-            pass
+            log.debug("Failed to close tab %s", target_id, exc_info=True)
 
     # ── Chrome lifecycle ─────────────────────────────────────────
 
@@ -99,10 +103,20 @@ class YouTubeTranscriptExtractor:
     def _kill_existing_chrome(self) -> None:
         """Kill any Chrome instance using our debug profile."""
         try:
-            subprocess.run(
-                ["pkill", "-f", f"user-data-dir={self._user_data_dir}"],
-                capture_output=True, timeout=5,
-            )
+            if sys.platform == "win32":
+                # taskkill matches by window title or image name; use wmic for
+                # command-line matching on Windows.
+                subprocess.run(
+                    ["wmic", "process", "where",
+                     f"commandline like '%user-data-dir={self._user_data_dir}%'",
+                     "call", "terminate"],
+                    capture_output=True, timeout=5,
+                )
+            else:
+                subprocess.run(
+                    ["pkill", "-f", f"user-data-dir={self._user_data_dir}"],
+                    capture_output=True, timeout=5,
+                )
             time.sleep(self.POST_KILL_WAIT)
         except Exception:
             pass
@@ -183,8 +197,14 @@ class YouTubeTranscriptExtractor:
         }))
         deadline = time.time() + self.SEND_JS_TIMEOUT
         while time.time() < deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            ws.settimeout(remaining)
             try:
                 data = json.loads(ws.recv())
+            except websocket.WebSocketTimeoutException:
+                break
             except websocket.WebSocketConnectionClosedException:
                 raise RuntimeError("WebSocket closed while waiting for JS response")
             if data.get("id") == msg_id:
@@ -204,7 +224,8 @@ class YouTubeTranscriptExtractor:
         target: dict[str, Any] | None = None
         ws: websocket.WebSocket | None = None
 
-        with open(LOCK_FILE, "w") as lock:
+        lock = open(LOCK_FILE, "w")
+        try:
             _lock(lock)
             try:
                 # Launch a fresh Chrome instance
@@ -272,6 +293,13 @@ class YouTubeTranscriptExtractor:
                 if target:
                     self.close_tab(target["id"])
                 self._shutdown_chrome()
+        finally:
+            _unlock(lock)
+            lock.close()
+            try:
+                os.remove(LOCK_FILE)
+            except OSError:
+                pass
 
     @staticmethod
     def _extract_value(resp: dict[str, Any]) -> Any:
