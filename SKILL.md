@@ -12,7 +12,7 @@ Use this workflow every time this skill is invoked.
 Run:
 
 ```bash
-PYTHONPATH=/Users/nick/projects/chrome-youtube-summary/src python3 -m yt_transcript "<YOUTUBE_URL>" --json
+PYTHONPATH=src python3 -m yt_transcript "<YOUTUBE_URL>" --json
 ```
 
 Rules:
@@ -67,10 +67,10 @@ Personalization targets for Nick:
 
 On every successful run, always write the summary file to:
 
-`/Users/Shared/yt_summaries/<channel> - <title>.md`
+`~/yt_summaries/<channel> - <title>.md`
 
 Rules:
-- Create `/Users/Shared/yt_summaries` if it does not exist.
+- Create `~/yt_summaries` if it does not exist.
 - Sanitize filename characters (`/ \\ : * ? " < > |`) to `_`.
 - File contents must exactly match the markdown structure in Step 3.
 - Telegram/user reply must be exactly the same text as the saved file (byte-for-byte content match).

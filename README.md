@@ -118,7 +118,7 @@ The `method` field indicates which extraction path succeeded: `"dom"` for the pr
 
 By default, successful runs are saved to:
 
-`/Users/Shared/yt_transcripts`
+`~/yt_transcripts`
 
 The JSON output also includes an `output_file` field when saving is enabled.
 Use `--output-dir` to override the directory or `--no-save` to disable file creation.

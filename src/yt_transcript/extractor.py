@@ -13,6 +13,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import sys
 import time
 from typing import Any
@@ -35,8 +36,8 @@ else:
 
 __version__ = "0.1.0"
 
-LOCK_FILE = "/tmp/yt-extract.lock"
-DEFAULT_OUTPUT_DIR = "/Users/Shared/yt_transcripts"
+LOCK_FILE = os.path.join(tempfile.gettempdir(), "yt-extract.lock")
+DEFAULT_OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "yt_transcripts")
 
 log = logging.getLogger("yt-transcript")
 
