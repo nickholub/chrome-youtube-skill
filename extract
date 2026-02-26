@@ -4,4 +4,4 @@
 # Or:    echo '<url>' | ./extract --stdin [--json] [--output-dir PATH] [--no-save]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m yt_transcript "$@"
+exec python3 "$SCRIPT_DIR/scripts/run_transcript.py" "$@"
