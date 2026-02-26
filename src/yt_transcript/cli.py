@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 
-from .extractor import YouTubeTranscriptExtractor, DEFAULT_OUTPUT_DIR, __version__
+from .extractor import YouTubeTranscriptExtractor, __version__
 
 
 def _sanitize_filename(value: str) -> str:
@@ -40,7 +40,7 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", dest="output_json", help="output as JSON")
     parser.add_argument("--port", type=int, default=9222, help="Chrome CDP port (default: 9222)")
     parser.add_argument("--stdin", action="store_true", help="read URL from stdin")
-    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help=f"transcript output directory (default: {DEFAULT_OUTPUT_DIR})")
+    parser.add_argument("--output-dir", default=None, help="transcript output directory (enables saving)")
     parser.add_argument("--no-save", action="store_true", help="skip saving transcript to disk")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -62,7 +62,7 @@ def main() -> None:
     extractor = YouTubeTranscriptExtractor(port=args.port)
     result = extractor.extract_transcript(url)
 
-    if result.get("success") and not args.no_save:
+    if result.get("success") and args.output_dir and not args.no_save:
         result["output_file"] = _save_transcript(result, os.path.expanduser(args.output_dir))
 
     if args.output_json:

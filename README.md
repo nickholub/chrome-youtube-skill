@@ -116,12 +116,13 @@ This is the full transcript text extracted from the video captions...
 
 The `method` field indicates which extraction path succeeded: `"dom"` for the primary transcript panel scrape, or `"api"` for the caption track URL fallback.
 
-By default, successful runs are saved to:
+By default, transcripts are printed to stdout without saving. Use `--output-dir` to save transcripts to disk:
 
-`~/yt_transcripts`
+```bash
+yt-transcript "https://www.youtube.com/watch?v=VIDEO_ID" --output-dir ~/yt_transcripts
+```
 
-The JSON output also includes an `output_file` field when saving is enabled.
-Use `--output-dir` to override the directory or `--no-save` to disable file creation.
+The JSON output includes an `output_file` field when saving is enabled.
 
 ## Supported URL Formats
 

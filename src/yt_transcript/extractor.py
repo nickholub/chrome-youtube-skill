@@ -37,7 +37,6 @@ else:
 __version__ = "0.1.0"
 
 LOCK_FILE = os.path.join(tempfile.gettempdir(), "yt-extract.lock")
-DEFAULT_OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "yt_transcripts")
 
 log = logging.getLogger("yt-transcript")
 

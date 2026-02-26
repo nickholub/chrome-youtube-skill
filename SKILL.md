@@ -67,10 +67,10 @@ Personalization targets for Nick:
 
 On every successful run, always write the summary file to:
 
-`~/yt_summaries/<channel> - <title>.md`
+`/Users/Shared/yt_summary/<channel> - <title>.md`
 
 Rules:
-- Create `~/yt_summaries` if it does not exist.
+- Create `/Users/Shared/yt_summary` if it does not exist.
 - Sanitize filename characters (`/ \\ : * ? " < > |`) to `_`.
 - File contents must exactly match the markdown structure in Step 3.
 - Telegram/user reply must be exactly the same text as the saved file (byte-for-byte content match).
