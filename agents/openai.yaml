@@ -1,0 +1,4 @@
+interface:
+  display_name: "YouTube Summary"
+  short_description: "Summarize YouTube URLs with local transcript extraction"
+  default_prompt: "Use $youtube to extract a transcript from this YouTube URL and return a concise, actionable summary."

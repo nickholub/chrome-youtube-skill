@@ -1,6 +1,6 @@
 ---
 name: youtube
-description: Summarize YouTube videos from links using the local chrome-youtube-transcript project. Use when a user sends a YouTube URL (youtube.com, youtu.be, shorts) and asks for a transcript, summary, key points, or breakdown. Extract transcript with this project's Python tool, then return a concise actionable summary personalized to Nick's projects, goals, and work style.
+description: Summarize YouTube videos from links using the local chrome-youtube-skill project. Use when a user shares a YouTube URL (youtube.com, youtu.be, shorts) and asks for a transcript, summary, key points, or breakdown. Extract transcript with this project's Python tool, then return a concise actionable summary personalized to Nick's projects, goals, and work style.
 ---
 
 # YouTube Summary (project-backed)
@@ -12,7 +12,8 @@ Use this workflow every time this skill is invoked.
 Run:
 
 ```bash
-PYTHONPATH=src python3 -m yt_transcript "<YOUTUBE_URL>" --json
+SKILL_DIR="/Users/nick/.codex/skills/youtube"
+PYTHONPATH="$SKILL_DIR/src" python3 -m yt_transcript "<YOUTUBE_URL>" --json
 ```
 
 Rules:
