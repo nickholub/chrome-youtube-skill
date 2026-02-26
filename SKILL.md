@@ -12,48 +12,14 @@ Use this workflow every time this skill is invoked.
 Run:
 
 ```bash
-python3 - <<'PY' "<YOUTUBE_URL>"
-from pathlib import Path
-import subprocess
-import sys
-
-url = sys.argv[1]
-cwd = Path.cwd().resolve()
-
-candidate_roots = []
-
-# If running in the skill repo (or a subdir), use that first.
-for path in (cwd, *cwd.parents):
-    if (path / "scripts" / "run_transcript.py").is_file() and (path / "SKILL.md").is_file():
-        candidate_roots.append(path)
-
-# Workspace skill locations across Codex, Claude, OpenClaw.
-for rel in (
-    ".codex/skills/youtube",
-    ".claude/skills/youtube",
-    ".openclaw/skills/youtube",
-    "skills/youtube",
-):
-    candidate_roots.append(cwd / rel)
-
-seen = set()
-for root in candidate_roots:
-    root = root.resolve()
-    key = str(root)
-    if key in seen:
-        continue
-    seen.add(key)
-
-    runner = root / "scripts" / "run_transcript.py"
-    if runner.is_file():
-        subprocess.run([sys.executable, str(runner), url, "--json"], check=True)
-        raise SystemExit(0)
-
-raise SystemExit(
-    "Could not locate youtube skill runner. Open this repo or install it in workspace at "
-    ".codex/skills/youtube, .claude/skills/youtube, .openclaw/skills/youtube, or skills/youtube."
-)
-PY
+if [ -x ./scripts/run_transcript.py ]; then
+  ./scripts/run_transcript.py "<YOUTUBE_URL>" --json
+elif [ -x ./extract ]; then
+  ./extract "<YOUTUBE_URL>" --json
+else
+  echo "Runner not found. Run from the youtube skill root."
+  exit 1
+fi
 ```
 
 Rules:
