@@ -39,9 +39,9 @@ If `success` is false:
 When extraction succeeds, build output with this exact structure:
 
 ```markdown
-**URL:** <video_url>
-
 ## <title> (<channel>)
+
+**URL:** <video_url>
 
 ### Key points
 - ...
