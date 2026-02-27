@@ -1,8 +1,18 @@
-# YouTube Transcript Extractor
+# YouTube Transcript Extractor and Summarizer
 
 Extract YouTube video transcripts by connecting to a visible Chrome instance via CDP (Chrome DevTools Protocol). Clicks "Show transcript" and reads the DOM — the same approach used by real users.
 
-## OpenClaw / Codex usage
+## OpenClaw usage
+
+OpenClaw skills are loaded from `~/.openclaw/workspace/skills/` and require a `SKILL.md`.
+
+```bash
+# Install as a local skill
+mkdir -p ~/.openclaw/workspace/skills
+ln -s /path/to/chrome-youtube-skill ~/.openclaw/workspace/skills/chrome-youtube-skill
+```
+
+## Codex usage
 
 Codex skills are loaded from `$CODEX_HOME/skills` (usually `~/.codex/skills`) and require a `SKILL.md`.
 This repo includes `SKILL.md` and `agents/openai.yaml`.
