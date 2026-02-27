@@ -9,7 +9,7 @@ OpenClaw skills are loaded from `~/.openclaw/workspace/skills/` and require a `S
 ```bash
 # Install as a local skill
 mkdir -p ~/.openclaw/workspace/skills
-ln -s /path/to/chrome-youtube-skill ~/.openclaw/workspace/skills/chrome-youtube-skill
+ln -s /path/to/chrome-youtube-skill ~/.openclaw/workspace/skills/youtube
 ```
 
 ## Codex usage
@@ -20,7 +20,7 @@ This repo includes `SKILL.md` and `agents/openai.yaml`.
 ```bash
 # Install as a local skill
 mkdir -p ~/.codex/skills
-ln -s /path/to/chrome-youtube-skill ~/.codex/skills/chrome-youtube-skill
+ln -s /path/to/chrome-youtube-skill ~/.codex/skills/youtube
 ```
 
 Restart Codex after installing so the new skill is detected.
