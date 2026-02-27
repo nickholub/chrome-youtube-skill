@@ -2,6 +2,64 @@
 
 Extract YouTube video transcripts by connecting to a visible Chrome instance via CDP (Chrome DevTools Protocol). Clicks "Show transcript" and reads the DOM — the same approach used by real users.
 
+## OpenClaw / Codex usage
+
+Codex skills are loaded from `$CODEX_HOME/skills` (usually `~/.codex/skills`) and require a `SKILL.md`.
+This repo includes `SKILL.md` and `agents/openai.yaml`.
+
+```bash
+# Install as a local skill
+mkdir -p ~/.codex/skills
+ln -s /path/to/chrome-youtube-skill ~/.codex/skills/chrome-youtube-skill
+```
+
+Restart Codex after installing so the new skill is detected.
+
+Invoke it in prompts as `$youtube`, for example:
+
+```text
+$youtube https://www.youtube.com/watch?v=dQw4w9WgXcQ
+```
+
+## Claude usage
+
+Claude Code skills are loaded from `~/.claude/skills` and require a `SKILL.md`.
+This repo includes `SKILL.md` with Claude Code-compatible metadata.
+
+```bash
+# Install as a local skill
+mkdir -p ~/.claude/skills
+ln -s /path/to/chrome-youtube-skill ~/.claude/skills/youtube
+```
+
+Invoke it with the `/youtube` slash command, for example:
+
+```text
+/youtube https://www.youtube.com/watch?v=dQw4w9WgXcQ
+```
+
+## CLI usage
+
+```bash
+# Plain text output
+./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+# JSON output
+./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json
+
+# From stdin
+echo "https://youtu.be/dQw4w9WgXcQ" | ./extract --stdin
+
+# Custom transcript output directory
+./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --output-dir ~/Downloads/yt_transcripts
+
+# Disable file saving
+./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --no-save
+
+# Custom CDP port
+./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --port 9333
+```
+
 ## How It Works
 
 ```
@@ -69,29 +127,7 @@ Chrome is found automatically. The script searches these paths in order:
 3. `google-chrome-stable` (Linux package managers)
 4. `chromium-browser` / `chromium` (Chromium)
 
-## Usage
-
-```bash
-# Plain text output
-./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-
-# JSON output
-./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json
-
-# From stdin
-echo "https://youtu.be/dQw4w9WgXcQ" | ./extract --stdin
-
-# Custom transcript output directory
-./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --output-dir ~/Downloads/yt_transcripts
-
-# Disable file saving
-./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --no-save
-
-# Custom CDP port
-./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --port 9333
-```
-
-### Output
+## Output
 
 **Plain text (default):**
 ```
