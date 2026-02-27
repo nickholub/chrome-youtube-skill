@@ -70,17 +70,16 @@ Personalization targets for the user:
 - Avoid fluff and generic motivation.
 - Prefer explicit next steps over abstract advice.
 
-## 5) Required save + identical Telegram output
+## 5) Required save
 
 On every successful run, always write the summary file to:
 
-`/Users/Shared/yt_summary/<channel> - <title>.md`
+`/Users/Shared/youtube_summary/<channel> - <title>.md`
 
 Rules:
-- Create `/Users/Shared/yt_summary` if it does not exist.
+- Create `/Users/Shared/youtube_summary` if it does not exist.
 - Sanitize filename characters (`/ \\ : * ? " < > |`) to `_`.
 - File contents must exactly match the markdown structure in Step 3.
-- Telegram/user reply must be exactly the same text as the saved file (byte-for-byte content match).
 
 ## Expected JSON fields
 
