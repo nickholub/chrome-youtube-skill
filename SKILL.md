@@ -80,6 +80,7 @@ Rules:
 - Create `/Users/Shared/youtube_summary` if it does not exist.
 - Sanitize filename characters (`/ \\ : * ? " < > |`) to `_`.
 - File contents must exactly match the markdown structure in Step 3.
+- After saving, output the exact absolute path of the saved file.
 
 ## Expected JSON fields
 
