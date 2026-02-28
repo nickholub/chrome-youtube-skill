@@ -351,6 +351,9 @@ class YouTubeTranscriptExtractor:
             data = json.loads(value)
         except (json.JSONDecodeError, TypeError):
             return None
+        if data.get("error"):
+            log.debug("DOM extraction reported error: %s", data.get("error"))
+            return None
         text = data.get("text", "")
         return text if text else None
 
@@ -369,6 +372,9 @@ class YouTubeTranscriptExtractor:
         try:
             data = json.loads(value)
         except (json.JSONDecodeError, TypeError):
+            return None
+        if data.get("error"):
+            log.debug("API extraction reported error: %s", data.get("error"))
             return None
         text = data.get("text", "")
         return text if text else None
