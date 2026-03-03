@@ -72,20 +72,30 @@ Personalization targets for the user:
 
 ## 5) Required save
 
-On every successful run, always write the summary file to:
+On every successful run, always write the summary file to a configured output directory.
 
-`/Users/Shared/youtube_summary/<channel> - <title>.md`
+**Output directory resolution:**
+1. Read from `skill.config` in the project root (format: `OUTPUT_DIR=/path/to/directory`)
+2. If config doesn't exist or `OUTPUT_DIR` is not set, fall back to `/Users/Shared/agents_vault/youtube_summary`
+
+**File path format:** `<output_directory>/<channel> - <title>.md`
 
 Rules:
-- Create `/Users/Shared/youtube_summary` if it does not exist.
+- Create output directory if it does not exist.
 - Sanitize filename characters (`/ \\ : * ? " < > |`) to `_`.
 - File contents must exactly match the markdown structure in Step 3.
-- Save via shell `exec` (not `write`) because file tools are workspace-root sandboxed and will reject `/Users/Shared/...` with `Path escapes workspace root`.
+- Save via shell `exec` (not `write`) because file tools are workspace-root sandboxed and will reject paths outside workspace with `Path escapes workspace root`.
 - Use a safe heredoc pattern for writes (example):
 
 ```bash
-mkdir -p /Users/Shared/youtube_summary
-cat > "/Users/Shared/youtube_summary/<channel> - <title>.md" <<'MD'
+# Read output directory from config or use default
+if [ -f skill.config ]; then
+  source skill.config
+fi
+OUTPUT_DIR="${OUTPUT_DIR:-/Users/Shared/agents_vault/youtube_summary}"
+
+mkdir -p "$OUTPUT_DIR"
+cat > "$OUTPUT_DIR/<channel> - <title>.md" <<'MD'
 <full markdown summary>
 MD
 ```

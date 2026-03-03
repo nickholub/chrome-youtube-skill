@@ -19,7 +19,9 @@ extract                 # Bash wrapper for CLI invocation
 scripts/
     run_transcript.py   # Run from repo without installation
 pyproject.toml          # PEP 621 packaging metadata and dependencies
-SKILL.md                # OpenClaw skill manifest
+skill.config.example    # Example configuration file
+skill.config            # Local config (gitignored) - set OUTPUT_DIR here
+SKILL.md                # OpenClaw/Codex/Claude skill manifest
 CLAUDE.md               # This file
 ```
 

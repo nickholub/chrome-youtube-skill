@@ -48,6 +48,28 @@ Invoke it with the `/youtube` slash command, for example:
 /youtube https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
+## Skill Configuration
+
+When used as a skill (OpenClaw, Codex, or Claude Code), summaries are saved to a configurable output directory.
+
+**To configure the output directory:**
+
+1. Copy the example config:
+   ```bash
+   cp skill.config.example skill.config
+   ```
+
+2. Edit `skill.config` and set your desired path:
+   ```bash
+   OUTPUT_DIR=/path/to/your/summaries
+   ```
+
+3. The config file is local to the project and ignored by git.
+
+**Default behavior:**
+- If no `skill.config` exists, summaries are saved to `/Users/Shared/agents_vault/youtube_summary`
+- The output directory is created automatically if it doesn't exist
+
 ## CLI usage
 
 ```bash

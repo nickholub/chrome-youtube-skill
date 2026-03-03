@@ -6,3 +6,6 @@ dist/
 build/
 .pytest_cache/
 .mypy_cache/
+
+# Local configuration
+skill.config
