@@ -2,5 +2,6 @@
 # Copy this file to skill.config and customize as needed
 
 # Output directory for YouTube video summaries
-# Default: /Users/Shared/agents_vault/youtube_summary
-OUTPUT_DIR=/Users/Shared/agents_vault/youtube_summary
+# Default: /Users/Shared/youtube_summary
+# Uncomment and customize to override:
+# OUTPUT_DIR=/Users/Shared/agents_vault/youtube_summary

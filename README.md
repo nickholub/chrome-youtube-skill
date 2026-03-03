@@ -67,7 +67,7 @@ When used as a skill (OpenClaw, Codex, or Claude Code), summaries are saved to a
 3. The config file is local to the project and ignored by git.
 
 **Default behavior:**
-- If no `skill.config` exists, summaries are saved to `/Users/Shared/agents_vault/youtube_summary`
+- If no `skill.config` exists, summaries are saved to `/Users/Shared/youtube_summary`
 - The output directory is created automatically if it doesn't exist
 
 ## CLI usage

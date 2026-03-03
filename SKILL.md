@@ -76,7 +76,7 @@ On every successful run, always write the summary file to a configured output di
 
 **Output directory resolution:**
 1. Read from `skill.config` in the project root (format: `OUTPUT_DIR=/path/to/directory`)
-2. If config doesn't exist or `OUTPUT_DIR` is not set, fall back to `/Users/Shared/agents_vault/youtube_summary`
+2. If config doesn't exist or `OUTPUT_DIR` is not set, fall back to `/Users/Shared/youtube_summary`
 
 **File path format:** `<output_directory>/<channel> - <title>.md`
 
@@ -92,7 +92,7 @@ Rules:
 if [ -f skill.config ]; then
   source skill.config
 fi
-OUTPUT_DIR="${OUTPUT_DIR:-/Users/Shared/agents_vault/youtube_summary}"
+OUTPUT_DIR="${OUTPUT_DIR:-/Users/Shared/youtube_summary}"
 
 mkdir -p "$OUTPUT_DIR"
 cat > "$OUTPUT_DIR/<channel> - <title>.md" <<'MD'
