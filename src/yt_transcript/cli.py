@@ -39,6 +39,11 @@ def main() -> None:
     )
     parser.add_argument("url", nargs="?", default=None, help="YouTube video URL")
     parser.add_argument("--json", action="store_true", dest="output_json", help="output as JSON")
+    parser.add_argument(
+        "--json-out",
+        default=None,
+        help="write JSON result to path (directories created as needed)",
+    )
     parser.add_argument("--port", type=int, default=9222, help="Chrome CDP port (default: 9222)")
     parser.add_argument("--stdin", action="store_true", help="read URL from stdin")
     parser.add_argument("--output-dir", default=None, help="transcript output directory (enables saving)")
@@ -65,6 +70,15 @@ def main() -> None:
 
     if result.get("success") and args.output_dir and not args.no_save:
         result["output_file"] = _save_transcript(result, os.path.expanduser(args.output_dir))
+
+    if args.json_out:
+        json_path = os.path.expanduser(args.json_out)
+        json_dir = os.path.dirname(json_path)
+        if json_dir:
+            os.makedirs(json_dir, exist_ok=True)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+            f.write("\n")
 
     if args.output_json:
         print(json.dumps(result, indent=2))

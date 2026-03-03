@@ -1,6 +1,6 @@
 #!/bin/bash
 # YouTube Transcript Extractor - CLI Wrapper
-# Usage: ./extract <youtube-url> [--json] [--port 9222] [--output-dir PATH] [--no-save]
+# Usage: ./extract <youtube-url> [--json] [--json-out FILE] [--port 9222] [--output-dir PATH] [--no-save]
 # Or:    echo '<url>' | ./extract --stdin [--json] [--output-dir PATH] [--no-save]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

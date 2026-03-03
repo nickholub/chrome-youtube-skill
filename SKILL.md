@@ -12,19 +12,24 @@ Use this workflow every time this skill is invoked.
 Run:
 
 ```bash
+TMP_JSON="$(mktemp -t yt_transcript_XXXXXX.json)"
+
 if [ -x ./scripts/run_transcript.py ]; then
-  ./scripts/run_transcript.py "<YOUTUBE_URL>" --json
+  ./scripts/run_transcript.py "<YOUTUBE_URL>" --json --json-out "$TMP_JSON" >/dev/null
 elif [ -x ./extract ]; then
-  ./extract "<YOUTUBE_URL>" --json
+  ./extract "<YOUTUBE_URL>" --json --json-out "$TMP_JSON" >/dev/null
 else
   echo "Runner not found. Run from the youtube skill root."
   exit 1
 fi
+
+cat "$TMP_JSON"
 ```
 
 Rules:
 - Always use this project tool for extraction.
 - Do not switch to other transcript tools.
+- The extractor launches a visible Chrome session; extract **once** per URL and reuse `TMP_JSON` for downstream steps.
 - Parse JSON output and check `success`.
 
 ## 2) Handle extraction failure

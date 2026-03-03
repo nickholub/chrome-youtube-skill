@@ -79,6 +79,9 @@ When used as a skill (OpenClaw, Codex, or Claude Code), summaries are saved to a
 # JSON output
 ./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json
 
+# JSON output (also write to a file)
+./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --json --json-out /tmp/yt_transcript.json
+
 # From stdin
 echo "https://youtu.be/dQw4w9WgXcQ" | ./extract --stdin
 
@@ -183,6 +186,8 @@ This is the full transcript text extracted from the video captions...
   "error": ""
 }
 ```
+
+Use `--json-out /path/to/result.json` to write the JSON result to disk.
 
 The `method` field indicates which extraction path succeeded: `"dom"` for the primary transcript panel scrape, or `"api"` for the caption track URL fallback.
 
