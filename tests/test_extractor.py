@@ -638,7 +638,7 @@ class TestMainCli(unittest.TestCase):
         with redirect_stdout(captured):
             main()
 
-        MockExtractor.assert_called_with(port=9333)
+        MockExtractor.assert_called_with(port=9333, reuse=True)
 
 
 class TestFindChrome(unittest.TestCase):

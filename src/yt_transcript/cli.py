@@ -48,6 +48,7 @@ def main() -> None:
     parser.add_argument("--stdin", action="store_true", help="read URL from stdin")
     parser.add_argument("--output-dir", default=None, help="transcript output directory (enables saving)")
     parser.add_argument("--no-save", action="store_true", help="skip saving transcript to disk")
+    parser.add_argument("--no-reuse", action="store_true", help="always launch a fresh Chrome instance")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
@@ -65,7 +66,7 @@ def main() -> None:
     if not url:
         parser.error("No URL provided. Pass a URL or use --stdin.")
 
-    extractor = YouTubeTranscriptExtractor(port=args.port)
+    extractor = YouTubeTranscriptExtractor(port=args.port, reuse=not args.no_reuse)
     result = extractor.extract_transcript(url)
 
     if result.get("success") and args.output_dir and not args.no_save:

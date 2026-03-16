@@ -66,10 +66,12 @@ class YouTubeTranscriptExtractor:
     # send_js timeout
     SEND_JS_TIMEOUT = 30
 
-    def __init__(self, port: int = 9222) -> None:
+    def __init__(self, port: int = 9222, reuse: bool = True) -> None:
         self.port = port
         self.base_url = f"http://127.0.0.1:{port}"
+        self.reuse = reuse
         self._chrome_process: subprocess.Popen[bytes] | None = None
+        self._launched_chrome = False
         self._user_data_dir = os.path.expanduser("~/.chrome-debug-profile")
 
     def open_tab(self, url: str) -> dict[str, Any]:
@@ -89,6 +91,14 @@ class YouTubeTranscriptExtractor:
             log.debug("Failed to close tab %s", target_id, exc_info=True)
 
     # ── Chrome lifecycle ─────────────────────────────────────────
+
+    def _chrome_is_running(self) -> bool:
+        """Check if a Chrome CDP endpoint is already responding."""
+        try:
+            resp = requests.get(f"{self.base_url}/json/version", timeout=2)
+            return resp.status_code == 200
+        except requests.ConnectionError:
+            return False
 
     def _find_chrome(self) -> str | None:
         """Find Chrome executable on this system."""
@@ -228,10 +238,15 @@ class YouTubeTranscriptExtractor:
         try:
             _lock(lock)
             try:
-                # Launch a fresh Chrome instance
-                self._kill_existing_chrome()
-                self._launch_chrome()
-                self._wait_for_chrome()
+                # Reuse existing Chrome if available, otherwise launch fresh
+                if self.reuse and self._chrome_is_running():
+                    log.info("Reusing existing Chrome on port %d", self.port)
+                    self._launched_chrome = False
+                else:
+                    self._launched_chrome = True
+                    self._kill_existing_chrome()
+                    self._launch_chrome()
+                    self._wait_for_chrome()
 
                 target = self.open_tab(canonical_url)
                 log.info("Opened tab for %s", canonical_url)
@@ -292,7 +307,8 @@ class YouTubeTranscriptExtractor:
                         pass
                 if target:
                     self.close_tab(target["id"])
-                self._shutdown_chrome()
+                if self._launched_chrome:
+                    self._shutdown_chrome()
         finally:
             _unlock(lock)
             lock.close()
