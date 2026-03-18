@@ -178,21 +178,38 @@ class YouTubeTranscriptExtractor:
     def _shutdown_chrome(self) -> None:
         """Terminate the Chrome process we launched."""
         proc = self._chrome_process
-        if not proc:
-            return
-        log.info("Shutting down Chrome (pid %d)", proc.pid)
-        try:
-            proc.terminate()
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=3)
-        except Exception:
-            try:
-                proc.kill()
-            except Exception:
-                pass
         self._chrome_process = None
+        if proc:
+            log.info("Shutting down Chrome (pid %d)", proc.pid)
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+                log.debug("Chrome terminated cleanly (pid %d)", proc.pid)
+            except subprocess.TimeoutExpired:
+                log.debug("Chrome did not exit after SIGTERM, sending SIGKILL (pid %d)", proc.pid)
+                try:
+                    proc.kill()
+                    proc.wait(timeout=3)
+                except Exception:
+                    pass
+            except Exception as e:
+                log.debug("proc.terminate() failed: %s, attempting kill", e)
+                try:
+                    proc.kill()
+                    proc.wait(timeout=3)
+                except Exception:
+                    pass
+
+        # Fallback: pkill any Chrome still using our debug port (covers orphaned helpers)
+        try:
+            result = subprocess.run(
+                ["pkill", "-f", f"remote-debugging-port={self.port}"],
+                capture_output=True, timeout=5,
+            )
+            if result.returncode == 0:
+                log.debug("pkill cleaned up Chrome process(es) on port %d", self.port)
+        except Exception:
+            pass
 
     def send_js(self, ws: websocket.WebSocket, script: str, msg_id: int = 1) -> dict[str, Any]:
         """Send JS for evaluation and wait for the matching response."""
@@ -262,6 +279,9 @@ class YouTubeTranscriptExtractor:
                 # Poll until YouTube's JS has initialized
                 self._wait_for_player_response(ws)
 
+                # Pause the video immediately so it doesn't play during extraction
+                self._pause_video(ws)
+
                 # Get video metadata from ytInitialPlayerResponse
                 meta = self._get_metadata(ws, msg_id=2)
                 log.debug("Metadata: %s", meta)
@@ -323,6 +343,22 @@ class YouTubeTranscriptExtractor:
         return resp.get("result", {}).get("result", {}).get("value")
 
     # ── Page helpers ──────────────────────────────────────────────
+
+    def _pause_video(self, ws: websocket.WebSocket) -> None:
+        """Pause the YouTube video so it doesn't play while we extract the transcript."""
+        js = """(function() {
+            var p = document.querySelector('#movie_player');
+            if (p && p.pauseVideo) { p.pauseVideo(); return 'paused-api'; }
+            var v = document.querySelector('video');
+            if (v) { v.pause(); return 'paused-video'; }
+            return 'no-player';
+        })()"""
+        try:
+            resp = self.send_js(ws, js, msg_id=5)
+            val = self._extract_value(resp)
+            log.debug("Pause video result: %s", val)
+        except Exception as e:
+            log.debug("Could not pause video: %s", e)
 
     def _wait_for_player_response(self, ws: websocket.WebSocket, max_wait: int = 15) -> None:
         """Poll until ytInitialPlayerResponse is available."""
