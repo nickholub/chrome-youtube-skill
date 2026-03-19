@@ -154,6 +154,7 @@ class YouTubeTranscriptExtractor:
                 f"--user-data-dir={self._user_data_dir}",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--window-position=-9999,-9999",
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
