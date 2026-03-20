@@ -946,5 +946,178 @@ class TestSaveTranscript(unittest.TestCase):
             self.assertTrue(os.path.isfile(path))
 
 
+class TestFetchChannelUrls(unittest.TestCase):
+    def setUp(self):
+        self.ext = YouTubeTranscriptExtractor(port=9222)
+        self.ext._chrome_is_running = MagicMock(return_value=True)
+
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
+    @patch.object(YouTubeTranscriptExtractor, "close_tab")
+    @patch.object(YouTubeTranscriptExtractor, "open_tab")
+    def test_appends_videos_path(self, mock_open, mock_close, mock_ws_create, mock_sleep):
+        mock_open.return_value = {"id": "TAB1", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/tab1"}
+        mock_ws = MagicMock()
+        mock_ws_create.return_value = mock_ws
+        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"result": {"value": json.dumps([])}}} )
+
+        self.ext._fetch_channel_urls("https://www.youtube.com/@test", 5)
+
+        opened_url = mock_open.call_args[0][0]
+        self.assertTrue(opened_url.endswith("/videos"))
+
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
+    @patch.object(YouTubeTranscriptExtractor, "close_tab")
+    @patch.object(YouTubeTranscriptExtractor, "open_tab")
+    def test_does_not_double_append_videos(self, mock_open, mock_close, mock_ws_create, mock_sleep):
+        mock_open.return_value = {"id": "TAB1", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/tab1"}
+        mock_ws = MagicMock()
+        mock_ws_create.return_value = mock_ws
+        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"result": {"value": json.dumps([])}}})
+
+        self.ext._fetch_channel_urls("https://www.youtube.com/@test/videos", 5)
+
+        opened_url = mock_open.call_args[0][0]
+        self.assertFalse(opened_url.endswith("/videos/videos"))
+
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
+    @patch.object(YouTubeTranscriptExtractor, "close_tab")
+    @patch.object(YouTubeTranscriptExtractor, "open_tab")
+    def test_returns_parsed_urls(self, mock_open, mock_close, mock_ws_create, mock_sleep):
+        mock_open.return_value = {"id": "TAB1", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/tab1"}
+        mock_ws = MagicMock()
+        mock_ws_create.return_value = mock_ws
+        urls = ["https://www.youtube.com/watch?v=AAA", "https://www.youtube.com/watch?v=BBB"]
+        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"result": {"value": json.dumps(urls)}}})
+
+        result = self.ext._fetch_channel_urls("https://www.youtube.com/@test", 5)
+
+        self.assertEqual(result, urls)
+
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
+    @patch.object(YouTubeTranscriptExtractor, "close_tab")
+    @patch.object(YouTubeTranscriptExtractor, "open_tab")
+    def test_closes_tab_on_success(self, mock_open, mock_close, mock_ws_create, mock_sleep):
+        mock_open.return_value = {"id": "TAB99", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/tab99"}
+        mock_ws = MagicMock()
+        mock_ws_create.return_value = mock_ws
+        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"result": {"value": json.dumps([])}}})
+
+        self.ext._fetch_channel_urls("https://www.youtube.com/@test", 5)
+
+        mock_close.assert_called_once_with("TAB99")
+
+    @patch("yt_transcript.extractor.time.sleep")
+    @patch("yt_transcript.extractor.websocket.create_connection")
+    @patch.object(YouTubeTranscriptExtractor, "close_tab")
+    @patch.object(YouTubeTranscriptExtractor, "open_tab")
+    def test_returns_empty_on_error(self, mock_open, mock_close, mock_ws_create, mock_sleep):
+        mock_open.side_effect = RuntimeError("CDP error")
+
+        result = self.ext._fetch_channel_urls("https://www.youtube.com/@test", 5)
+
+        self.assertEqual(result, [])
+
+
+class TestBatchExtract(unittest.TestCase):
+    def setUp(self):
+        self.ext = YouTubeTranscriptExtractor(port=9222)
+        self.ext._chrome_is_running = MagicMock(return_value=True)
+        self.ext._kill_existing_chrome = MagicMock()
+        self.ext._launch_chrome = MagicMock()
+        self.ext._wait_for_chrome = MagicMock()
+        self.ext._shutdown_chrome = MagicMock()
+
+    def test_returns_empty_when_no_urls_found(self):
+        self.ext._fetch_channel_urls = MagicMock(return_value=[])
+
+        results = self.ext.batch_extract("https://www.youtube.com/@test", 5)
+
+        self.assertEqual(results, [])
+
+    def test_calls_extract_one_for_each_url(self):
+        urls = [
+            "https://www.youtube.com/watch?v=AAA",
+            "https://www.youtube.com/watch?v=BBB",
+        ]
+        self.ext._fetch_channel_urls = MagicMock(return_value=urls)
+        self.ext._extract_one = MagicMock(return_value={"success": True, "transcript": "text"})
+
+        results = self.ext.batch_extract("https://www.youtube.com/@test", 5)
+
+        self.assertEqual(self.ext._extract_one.call_count, 2)
+        self.ext._extract_one.assert_any_call(urls[0])
+        self.ext._extract_one.assert_any_call(urls[1])
+        self.assertEqual(len(results), 2)
+
+    def test_reuses_chrome_when_running(self):
+        self.ext._chrome_is_running = MagicMock(return_value=True)
+        self.ext._fetch_channel_urls = MagicMock(return_value=[])
+
+        self.ext.batch_extract("https://www.youtube.com/@test", 5)
+
+        self.ext._launch_chrome.assert_not_called()
+        self.ext._shutdown_chrome.assert_not_called()
+
+    def test_launches_and_shuts_down_chrome_when_not_running(self):
+        self.ext._chrome_is_running = MagicMock(return_value=False)
+        self.ext._fetch_channel_urls = MagicMock(return_value=[])
+
+        self.ext.batch_extract("https://www.youtube.com/@test", 5)
+
+        self.ext._launch_chrome.assert_called_once()
+        self.ext._shutdown_chrome.assert_called_once()
+
+    def test_shuts_down_chrome_even_on_exception(self):
+        self.ext._chrome_is_running = MagicMock(return_value=False)
+        self.ext._fetch_channel_urls = MagicMock(side_effect=RuntimeError("boom"))
+
+        results = self.ext.batch_extract("https://www.youtube.com/@test", 5)
+
+        self.ext._shutdown_chrome.assert_called_once()
+        self.assertEqual(results, [])
+
+    def test_collects_mixed_success_and_failure(self):
+        urls = [
+            "https://www.youtube.com/watch?v=AAA",
+            "https://www.youtube.com/watch?v=BBB",
+        ]
+        self.ext._fetch_channel_urls = MagicMock(return_value=urls)
+        self.ext._extract_one = MagicMock(side_effect=[
+            {"success": True, "transcript": "hello"},
+            {"success": False, "error": "no captions"},
+        ])
+
+        results = self.ext.batch_extract("https://www.youtube.com/@test", 5)
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(results[0]["success"])
+        self.assertFalse(results[1]["success"])
+
+
+class TestSendJsTimeout(unittest.TestCase):
+    def setUp(self):
+        self.ext = YouTubeTranscriptExtractor(port=9222)
+
+    def test_uses_default_timeout(self):
+        mock_ws = MagicMock()
+        mock_ws.recv.return_value = json.dumps({"id": 1, "result": {"result": {"value": "ok"}}})
+
+        result = self.ext.send_js(mock_ws, "1+1", msg_id=1)
+
+        self.assertEqual(self.ext._extract_value(result), "ok")
+
+    def test_accepts_custom_timeout(self):
+        mock_ws = MagicMock()
+        mock_ws.recv.return_value = json.dumps({"id": 7, "result": {"result": {"value": "done"}}})
+
+        result = self.ext.send_js(mock_ws, "1+1", msg_id=7, timeout=120)
+
+        self.assertEqual(self.ext._extract_value(result), "done")
+
+
 if __name__ == "__main__":
     unittest.main()

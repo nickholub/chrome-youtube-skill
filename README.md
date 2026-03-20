@@ -72,6 +72,8 @@ When used as a skill (OpenClaw, Codex, or Claude Code), summaries are saved to a
 
 ## CLI usage
 
+### Single video
+
 ```bash
 # Plain text output
 ./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -85,7 +87,7 @@ When used as a skill (OpenClaw, Codex, or Claude Code), summaries are saved to a
 # From stdin
 echo "https://youtu.be/dQw4w9WgXcQ" | ./extract --stdin
 
-# Custom transcript output directory
+# Save transcript to a directory
 ./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --output-dir ~/Downloads/yt_transcripts
 
 # Disable file saving
@@ -94,6 +96,27 @@ echo "https://youtu.be/dQw4w9WgXcQ" | ./extract --stdin
 # Custom CDP port
 ./extract "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --port 9333
 ```
+
+### Batch channel export
+
+Export transcripts from the N latest videos on a YouTube channel in a single Chrome session:
+
+```bash
+# Export the 10 latest videos
+./extract batch https://www.youtube.com/@channelhandle/videos --count 10 --output-dir ~/transcripts
+
+# Export all videos (scrolls until the page is fully loaded)
+./extract batch https://www.youtube.com/@channelhandle/videos --count 10000 --output-dir ~/transcripts
+
+# Short flags
+./extract batch https://www.youtube.com/@channelhandle/videos -n 25 -o ~/transcripts
+```
+
+The batch command:
+1. Opens the channel's `/videos` page and scrolls until no new videos load
+2. Collects up to `--count` video URLs in chronological order (newest first)
+3. Extracts each transcript in the same Chrome session (no restart between videos)
+4. Saves one `.txt` file per video; skips videos with no captions and reports them at the end
 
 ## How It Works
 
@@ -172,6 +195,21 @@ Channel: Channel Name
 This is the full transcript text extracted from the video captions...
 ```
 
+**Saved transcript files** (with `--output-dir` or `batch`):
+
+Files are named `YYYY-MM-DD - Channel - Title.txt` and start with a metadata header:
+
+```
+Title: Video Title
+Channel: Channel Name
+URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+Views: 1,234,567
+Published: 2024-06-01
+============================================================
+
+This is the full transcript text...
+```
+
 **JSON (`--json`):**
 ```json
 {
@@ -183,6 +221,8 @@ This is the full transcript text extracted from the video captions...
   "transcript": "This is the full transcript text...",
   "language": "en",
   "method": "dom",
+  "view_count": "1234567",
+  "publish_date": "2024-06-01T10:00:00-07:00",
   "error": ""
 }
 ```
@@ -190,14 +230,6 @@ This is the full transcript text extracted from the video captions...
 Use `--json-out /path/to/result.json` to write the JSON result to disk.
 
 The `method` field indicates which extraction path succeeded: `"dom"` for the primary transcript panel scrape, or `"api"` for the caption track URL fallback.
-
-By default, transcripts are printed to stdout without saving. Use `--output-dir` to save transcripts to disk:
-
-```bash
-yt-transcript "https://www.youtube.com/watch?v=VIDEO_ID" --output-dir ~/yt_transcripts
-```
-
-The JSON output includes an `output_file` field when saving is enabled.
 
 ## Supported URL Formats
 
@@ -217,7 +249,10 @@ All formats are normalized to `https://www.youtube.com/watch?v=VIDEO_ID` before 
 | `src/yt_transcript/extractor.py` | Core — Chrome lifecycle, CDP communication, transcript extraction |
 | `src/yt_transcript/cli.py` | CLI entry point, argument parsing, file saving |
 | `src/yt_transcript/__main__.py` | `python -m yt_transcript` support |
-| `src/yt_transcript/js/` | JavaScript snippets executed in Chrome via CDP (DOM extraction, API fallback, metadata) |
+| `src/yt_transcript/js/get_metadata.js` | Extract title, channel, view count, publish date from `ytInitialPlayerResponse` |
+| `src/yt_transcript/js/extract_dom.js` | Click "Show transcript" and scrape the transcript panel DOM |
+| `src/yt_transcript/js/extract_api.js` | Fallback: fetch caption track URL via in-page `fetch()` |
+| `src/yt_transcript/js/get_channel_videos.js` | Scroll a channel `/videos` page and collect video URLs |
 | `extract` | Bash wrapper for CLI invocation |
 | `scripts/run_transcript.py` | Run from repo without installation (sets up `sys.path`) |
 | `tests/test_extractor.py` | Unit tests (73 tests, runs in <1s) |
@@ -244,4 +279,4 @@ The lock is explicitly released and the lock file is deleted in a `finally` bloc
 - Requires Chrome or Chromium installed on the system
 - Only works with videos that have captions (auto-generated or manual)
 - Prefers English captions; falls back to first available language
-- The script launches and kills its own Chrome instance on each run; it cannot reuse an already-running browser
+- Reuses an already-running Chrome instance by default (`--no-reuse` to force a fresh launch)
