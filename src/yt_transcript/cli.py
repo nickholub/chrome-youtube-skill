@@ -26,45 +26,38 @@ def _save_transcript(result: dict, output_dir: str) -> str:
     channel = _sanitize_filename(result.get("channel") or "unknown-channel")
     title = _sanitize_filename(result.get("title") or "untitled")
     video_id = _sanitize_filename(result.get("video_id") or "video")
-    filename = f"{channel} - {title} [{video_id}].txt"
+    date_prefix = (result.get("publish_date") or "")[:10]  # take yyyy-mm-dd from ISO string
+    filename = f"{date_prefix} - {channel} - {title}.txt" if date_prefix else f"{channel} - {title}.txt"
     path = os.path.join(output_dir, filename)
+
+    header_lines = []
+    if result.get("title"):
+        header_lines.append(f"Title: {result['title']}")
+    if result.get("channel"):
+        header_lines.append(f"Channel: {result['channel']}")
+    if result.get("url"):
+        header_lines.append(f"URL: {result['url']}")
+    if result.get("view_count"):
+        header_lines.append(f"Views: {int(result['view_count']):,}")
+    if result.get("publish_date"):
+        header_lines.append(f"Published: {result['publish_date']}")
+
     with open(path, "w", encoding="utf-8") as f:
+        if header_lines:
+            f.write("\n".join(header_lines))
+            f.write("\n" + "=" * 60 + "\n\n")
         f.write(result.get("transcript", ""))
     return path
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Extract YouTube video transcripts via Chrome DevTools Protocol.",
-    )
-    parser.add_argument("url", nargs="?", default=None, help="YouTube video URL")
-    parser.add_argument("--json", action="store_true", dest="output_json", help="output as JSON")
-    parser.add_argument(
-        "--json-out",
-        default=None,
-        help="write JSON result to path (directories created as needed)",
-    )
-    parser.add_argument("--port", type=int, default=9222, help="Chrome CDP port (default: 9222)")
-    parser.add_argument("--stdin", action="store_true", help="read URL from stdin")
-    parser.add_argument("--output-dir", default=None, help="transcript output directory (enables saving)")
-    parser.add_argument("--no-save", action="store_true", help="skip saving transcript to disk")
-    parser.add_argument("--no-reuse", action="store_true", help="always launch a fresh Chrome instance")
-    parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-
-    args = parser.parse_args()
-
-    logging.basicConfig(
-        format="%(levelname)s: %(message)s",
-        level=logging.DEBUG if args.verbose else logging.WARNING,
-    )
-
+def _run_single(args: argparse.Namespace) -> None:
     url = args.url
     if args.stdin:
         url = sys.stdin.readline().strip()
 
     if not url:
-        parser.error("No URL provided. Pass a URL or use --stdin.")
+        print("error: No URL provided. Pass a URL or use --stdin.", file=sys.stderr)
+        sys.exit(2)
 
     extractor = YouTubeTranscriptExtractor(port=args.port, reuse=not args.no_reuse)
     result = extractor.extract_transcript(url)
@@ -98,3 +91,99 @@ def main() -> None:
         else:
             print(f"Error: {result['error']}", file=sys.stderr)
             sys.exit(1)
+
+
+def _run_batch(args: argparse.Namespace) -> None:
+    output_dir = os.path.expanduser(args.output_dir)
+    extractor = YouTubeTranscriptExtractor(port=args.port, reuse=not args.no_reuse)
+
+    print(f"Fetching up to {args.count} video(s) from: {args.channel_url}")
+    results = extractor.batch_extract(args.channel_url, args.count)
+
+    if not results:
+        print("No videos were processed.", file=sys.stderr)
+        sys.exit(1)
+
+    saved = 0
+    failed = 0
+    for result in results:
+        if result.get("success"):
+            path = _save_transcript(result, output_dir)
+            print(f"  Saved: {path}")
+            saved += 1
+        else:
+            title = result.get("title") or result.get("url") or "unknown"
+            print(f"  Failed ({title}): {result.get('error', 'unknown error')}", file=sys.stderr)
+            failed += 1
+
+    print(f"\nDone: {saved} saved, {failed} failed.")
+    if failed and saved == 0:
+        sys.exit(1)
+
+
+def main() -> None:
+    # Inject 'extract' subcommand when the caller uses the legacy flat interface
+    # (i.e. no explicit subcommand like 'extract' or 'batch' is present).
+    _subcommands = {"extract", "batch"}
+    _first_positional = next(
+        (a for a in sys.argv[1:] if not a.startswith("-")), None
+    )
+    if _first_positional not in _subcommands:
+        sys.argv.insert(1, "extract")
+
+    parser = argparse.ArgumentParser(
+        description="Extract YouTube video transcripts via Chrome DevTools Protocol.",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # ── single video ─────────────────────────────────────────────
+    single = subparsers.add_parser("extract", help="Extract transcript from a single video URL.")
+    single.add_argument("url", nargs="?", default=None, help="YouTube video URL")
+    single.add_argument("--json", action="store_true", dest="output_json", help="output as JSON")
+    single.add_argument(
+        "--json-out",
+        default=None,
+        help="write JSON result to path (directories created as needed)",
+    )
+    single.add_argument("--port", type=int, default=9222, help="Chrome CDP port (default: 9222)")
+    single.add_argument("--stdin", action="store_true", help="read URL from stdin")
+    single.add_argument("--output-dir", default=None, help="transcript output directory (enables saving)")
+    single.add_argument("--no-save", action="store_true", help="skip saving transcript to disk")
+    single.add_argument("--no-reuse", action="store_true", help="always launch a fresh Chrome instance")
+    single.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
+
+    # ── batch channel export ─────────────────────────────────────
+    batch = subparsers.add_parser(
+        "batch",
+        help="Extract transcripts from the N latest videos on a YouTube channel.",
+    )
+    batch.add_argument(
+        "channel_url",
+        help="YouTube channel URL (e.g. https://www.youtube.com/@handle/videos)",
+    )
+    batch.add_argument(
+        "--count", "-n",
+        type=int, default=10,
+        help="number of latest videos to export (default: 10)",
+    )
+    batch.add_argument(
+        "--output-dir", "-o",
+        required=True,
+        help="directory to write transcript files into",
+    )
+    batch.add_argument("--port", type=int, default=9222, help="Chrome CDP port (default: 9222)")
+    batch.add_argument("--no-reuse", action="store_true", help="always launch a fresh Chrome instance")
+    batch.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
+
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s",
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+    )
+
+    if args.command == "batch":
+        _run_batch(args)
+    else:
+        _run_single(args)

@@ -212,8 +212,9 @@ class YouTubeTranscriptExtractor:
         except Exception:
             pass
 
-    def send_js(self, ws: websocket.WebSocket, script: str, msg_id: int = 1) -> dict[str, Any]:
+    def send_js(self, ws: websocket.WebSocket, script: str, msg_id: int = 1, timeout: int | None = None) -> dict[str, Any]:
         """Send JS for evaluation and wait for the matching response."""
+        effective_timeout = timeout if timeout is not None else self.SEND_JS_TIMEOUT
         ws.send(json.dumps({
             "id": msg_id,
             "method": "Runtime.evaluate",
@@ -223,7 +224,7 @@ class YouTubeTranscriptExtractor:
                 "awaitPromise": True,
             }
         }))
-        deadline = time.time() + self.SEND_JS_TIMEOUT
+        deadline = time.time() + effective_timeout
         while time.time() < deadline:
             remaining = deadline - time.time()
             if remaining <= 0:
@@ -237,7 +238,7 @@ class YouTubeTranscriptExtractor:
                 raise RuntimeError("WebSocket closed while waiting for JS response")
             if data.get("id") == msg_id:
                 return data
-        raise TimeoutError(f"send_js timed out after {self.SEND_JS_TIMEOUT}s waiting for msg_id={msg_id}")
+        raise TimeoutError(f"send_js timed out after {effective_timeout}s waiting for msg_id={msg_id}")
 
     def extract_transcript(self, url: str) -> dict[str, Any]:
         """
@@ -312,6 +313,8 @@ class YouTubeTranscriptExtractor:
                     title=meta.get("title", ""),
                     channel=meta.get("channel", ""),
                     language=meta.get("language", ""),
+                    view_count=meta.get("view_count", ""),
+                    publish_date=meta.get("publish_date", ""),
                     transcript=transcript, method=method,
                 )
 
@@ -432,6 +435,132 @@ class YouTubeTranscriptExtractor:
         text = data.get("text", "")
         return text if text else None
 
+    # ── Batch / channel extraction ────────────────────────────────
+
+    def _fetch_channel_urls(self, channel_url: str, limit: int) -> list[str]:
+        """Open a channel /videos page and return up to `limit` video URLs (Chrome must be running)."""
+        url = channel_url.rstrip("/")
+        if not url.endswith("/videos"):
+            url += "/videos"
+        target = None
+        ws: websocket.WebSocket | None = None
+        try:
+            target = self.open_tab(url)
+            log.info("Opened channel tab: %s", url)
+            time.sleep(self.PAGE_LOAD_WAIT)
+            ws = websocket.create_connection(target["webSocketDebuggerUrl"], timeout=30)
+            js = (_JS_DIR / "get_channel_videos.js").read_text().replace("{{LIMIT}}", str(limit))
+            resp = self.send_js(ws, js, msg_id=1, timeout=600)
+            value = self._extract_value(resp)
+            if not value:
+                return []
+            urls = json.loads(value)
+            log.info("Found %d video URL(s) on channel page", len(urls))
+            return urls
+        except Exception as e:
+            log.error("Failed to fetch channel video list: %s", e)
+            return []
+        finally:
+            if ws:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+            if target:
+                self.close_tab(target["id"])
+
+    def _extract_one(self, url: str) -> dict[str, Any]:
+        """Extract transcript for a single video assuming Chrome is already running."""
+        video_id = self._parse_video_id(url)
+        if not video_id:
+            return self._result(error="Could not parse video ID from URL")
+
+        canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+        target: dict[str, Any] | None = None
+        ws: websocket.WebSocket | None = None
+        try:
+            target = self.open_tab(canonical_url)
+            log.info("Opened tab for %s", canonical_url)
+            time.sleep(self.PAGE_LOAD_WAIT)
+            ws = websocket.create_connection(target["webSocketDebuggerUrl"], timeout=30)
+            self._wait_for_player_response(ws)
+            self._pause_video(ws)
+            meta = self._get_metadata(ws, msg_id=2)
+            transcript = self._extract_from_dom(ws, msg_id=10)
+            method = "dom"
+            if not transcript:
+                transcript = self._extract_from_api(ws, msg_id=20)
+                method = "api"
+            if not transcript:
+                return self._result(
+                    video_id=video_id, url=canonical_url,
+                    title=meta.get("title", ""), channel=meta.get("channel", ""),
+                    error="No transcript found. Video may not have captions.",
+                )
+            return self._result(
+                success=True, video_id=video_id, url=canonical_url,
+                title=meta.get("title", ""), channel=meta.get("channel", ""),
+                language=meta.get("language", ""),
+                view_count=meta.get("view_count", ""),
+                publish_date=meta.get("publish_date", ""),
+                transcript=transcript, method=method,
+            )
+        except Exception as e:
+            log.error("Extraction failed for %s: %s", url, e)
+            return self._result(video_id=video_id, url=canonical_url, error=str(e))
+        finally:
+            if ws:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+            if target:
+                self.close_tab(target["id"])
+
+    def batch_extract(self, channel_url: str, limit: int) -> list[dict[str, Any]]:
+        """
+        Extract transcripts from the `limit` latest videos on a YouTube channel.
+        Runs inside a single Chrome session; acquires the shared lock for the duration.
+        """
+        lock = open(LOCK_FILE, "w")
+        launched = False
+        try:
+            _lock(lock)
+            try:
+                if self.reuse and self._chrome_is_running():
+                    log.info("Reusing existing Chrome on port %d", self.port)
+                else:
+                    launched = True
+                    self._kill_existing_chrome()
+                    self._launch_chrome()
+                    self._wait_for_chrome()
+
+                video_urls = self._fetch_channel_urls(channel_url, limit)
+                if not video_urls:
+                    log.warning("No video URLs found on channel page")
+                    return []
+
+                results: list[dict[str, Any]] = []
+                for i, url in enumerate(video_urls, 1):
+                    log.info("Extracting %d/%d: %s", i, len(video_urls), url)
+                    result = self._extract_one(url)
+                    results.append(result)
+                return results
+
+            except Exception as e:
+                log.error("Batch extraction failed: %s", e)
+                return []
+            finally:
+                if launched:
+                    self._shutdown_chrome()
+        finally:
+            _unlock(lock)
+            lock.close()
+            try:
+                os.remove(LOCK_FILE)
+            except OSError:
+                pass
+
     # ── Utilities ─────────────────────────────────────────────────
 
     def _parse_video_id(self, url: str) -> str | None:
@@ -459,6 +588,8 @@ class YouTubeTranscriptExtractor:
         language: str = "",
         method: str = "",
         error: str = "",
+        view_count: str = "",
+        publish_date: str = "",
     ) -> dict[str, Any]:
         return {
             "success": success,
@@ -470,4 +601,6 @@ class YouTubeTranscriptExtractor:
             "language": language,
             "method": method,
             "error": error,
+            "view_count": view_count,
+            "publish_date": publish_date,
         }

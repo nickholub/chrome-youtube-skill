@@ -117,6 +117,7 @@ class TestResult(unittest.TestCase):
         expected_keys = {
             "success", "video_id", "title", "channel",
             "url", "transcript", "language", "method", "error",
+            "view_count", "publish_date",
         }
         self.assertEqual(set(r.keys()), expected_keys)
 
@@ -372,10 +373,12 @@ class TestExtractTranscript(unittest.TestCase):
         mock_ws = MagicMock()
         mock_ws_create.return_value = mock_ws
 
-        # Responses for: _wait_for_player_response, _get_metadata, _extract_from_dom
+        # Responses for: _wait_for_player_response, _pause_video, _get_metadata, _extract_from_dom
         mock_ws.recv.side_effect = [
             # _wait_for_player_response (msg_id=999)
             json.dumps({"id": 999, "result": {"result": {"value": "true"}}}),
+            # _pause_video (msg_id=5)
+            json.dumps({"id": 5, "result": {"result": {"value": "paused-api"}}}),
             # _get_metadata (msg_id=2)
             json.dumps({"id": 2, "result": {"result": {"value": json.dumps({
                 "title": "Test Video", "channel": "Test Channel", "language": "en"
@@ -413,6 +416,8 @@ class TestExtractTranscript(unittest.TestCase):
         mock_ws.recv.side_effect = [
             # _wait_for_player_response
             json.dumps({"id": 999, "result": {"result": {"value": "true"}}}),
+            # _pause_video (msg_id=5)
+            json.dumps({"id": 5, "result": {"result": {"value": "paused-api"}}}),
             # _get_metadata
             json.dumps({"id": 2, "result": {"result": {"value": json.dumps({
                 "title": "Test", "channel": "Ch", "language": "en"
@@ -449,6 +454,8 @@ class TestExtractTranscript(unittest.TestCase):
         mock_ws.recv.side_effect = [
             # _wait_for_player_response
             json.dumps({"id": 999, "result": {"result": {"value": "true"}}}),
+            # _pause_video (msg_id=5)
+            json.dumps({"id": 5, "result": {"result": {"value": "paused-api"}}}),
             # _get_metadata
             json.dumps({"id": 2, "result": {"result": {"value": json.dumps({
                 "title": "No Captions", "channel": "Ch", "language": ""
@@ -886,12 +893,22 @@ class TestSaveTranscript(unittest.TestCase):
                 "channel": "TestChannel",
                 "title": "TestTitle",
                 "video_id": "abc123",
+                "url": "https://www.youtube.com/watch?v=abc123",
+                "view_count": "1234",
+                "publish_date": "2024-01-15",
                 "transcript": "Hello world transcript",
             }
             path = self.save(result, tmpdir)
             self.assertTrue(os.path.isfile(path))
             with open(path, encoding="utf-8") as f:
-                self.assertEqual(f.read(), "Hello world transcript")
+                content = f.read()
+            self.assertIn("Hello world transcript", content)
+            self.assertIn("Title: TestTitle", content)
+            self.assertIn("Channel: TestChannel", content)
+            self.assertIn("URL: https://www.youtube.com/watch?v=abc123", content)
+            self.assertIn("Views: 1,234", content)
+            self.assertIn("Published: 2024-01-15", content)
+            self.assertIn("=" * 60, content)
 
     def test_filename_format(self):
         import tempfile
@@ -900,11 +917,12 @@ class TestSaveTranscript(unittest.TestCase):
                 "channel": "MyChannel",
                 "title": "MyTitle",
                 "video_id": "xyz789",
+                "publish_date": "2024-06-01T10:00:00-07:00",
                 "transcript": "text",
             }
             path = self.save(result, tmpdir)
             filename = os.path.basename(path)
-            self.assertEqual(filename, "MyChannel - MyTitle [xyz789].txt")
+            self.assertEqual(filename, "2024-06-01 - MyChannel - MyTitle.txt")
 
     def test_missing_fields_use_defaults(self):
         import tempfile
@@ -912,7 +930,7 @@ class TestSaveTranscript(unittest.TestCase):
             result = {"transcript": "text"}
             path = self.save(result, tmpdir)
             filename = os.path.basename(path)
-            self.assertEqual(filename, "unknown-channel - untitled [video].txt")
+            self.assertEqual(filename, "unknown-channel - untitled.txt")
 
     def test_creates_output_dir(self):
         import tempfile
