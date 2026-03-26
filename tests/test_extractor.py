@@ -398,6 +398,11 @@ class TestExtractTranscript(unittest.TestCase):
         self.assertEqual(result["transcript"], "This is the transcript text")
         self.assertEqual(result["method"], "dom")
         self.assertEqual(result["language"], "en")
+        mock_ws_create.assert_called_once_with(
+            "ws://127.0.0.1:9222/devtools/page/TAB1",
+            timeout=30,
+            suppress_origin=True,
+        )
         mock_close.assert_called_once_with("TAB1")
 
     @patch("yt_transcript.extractor.time.sleep")
@@ -521,6 +526,7 @@ class TestExtractTranscript(unittest.TestCase):
         mock_ws_create.return_value = mock_ws
         mock_ws.recv.side_effect = [
             json.dumps({"id": 999, "result": {"result": {"value": "true"}}}),
+            json.dumps({"id": 5, "result": {"result": {"value": "paused-api"}}}),
             json.dumps({"id": 2, "result": {"result": {"value": "{}"}}}),
             json.dumps({"id": 10, "result": {"result": {"value": json.dumps({"text": "t"})}}}),
         ]

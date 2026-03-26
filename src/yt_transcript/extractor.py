@@ -275,7 +275,7 @@ class YouTubeTranscriptExtractor:
                 time.sleep(self.PAGE_LOAD_WAIT)
 
                 ws = websocket.create_connection(
-                    target["webSocketDebuggerUrl"], timeout=30
+                    target["webSocketDebuggerUrl"], timeout=30, suppress_origin=True
                 )
 
                 # Poll until YouTube's JS has initialized
