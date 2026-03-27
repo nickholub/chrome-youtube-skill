@@ -4,4 +4,4 @@
 # Output directory for YouTube video summaries
 # Default: ~/youtube_transcripts
 # Uncomment and customize to override:
-# OUTPUT_DIR=~/youtube_transcripts
+# OUTPUT_DIR="~/youtube_transcripts"
