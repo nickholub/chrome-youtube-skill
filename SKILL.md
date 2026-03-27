@@ -94,9 +94,7 @@ Rules:
 
 ```bash
 # Read output directory from config or use default
-if [ -f skill.config ]; then
-  source skill.config
-fi
+OUTPUT_DIR="$(grep '^OUTPUT_DIR=' skill.config 2>/dev/null | head -1 | cut -d= -f2-)"
 OUTPUT_DIR="${OUTPUT_DIR:-$HOME/youtube_transcripts}"
 
 mkdir -p "$OUTPUT_DIR"
