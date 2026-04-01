@@ -38,7 +38,10 @@ def _save_transcript(result: dict, output_dir: str) -> str:
     if result.get("url"):
         header_lines.append(f"URL: {result['url']}")
     if result.get("view_count"):
-        header_lines.append(f"Views: {int(result['view_count']):,}")
+        try:
+            header_lines.append(f"Views: {int(result['view_count']):,}")
+        except (ValueError, TypeError):
+            header_lines.append(f"Views: {result['view_count']}")
     if result.get("publish_date"):
         header_lines.append(f"Published: {result['publish_date']}")
 
