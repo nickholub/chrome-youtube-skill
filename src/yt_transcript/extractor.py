@@ -304,6 +304,9 @@ class YouTubeTranscriptExtractor:
                         video_id=video_id, url=canonical_url,
                         title=meta.get("title", ""),
                         channel=meta.get("channel", ""),
+                        language=meta.get("language", ""),
+                        view_count=meta.get("view_count", ""),
+                        publish_date=meta.get("publish_date", ""),
                         error="No transcript found. Video may not have captions.",
                     )
 
