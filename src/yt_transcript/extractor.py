@@ -154,6 +154,7 @@ class YouTubeTranscriptExtractor:
                 f"--user-data-dir={self._user_data_dir}",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--mute-audio",
                 "--window-position=-9999,-9999",
             ],
             stdout=subprocess.DEVNULL,
@@ -352,11 +353,12 @@ class YouTubeTranscriptExtractor:
     # ── Page helpers ──────────────────────────────────────────────
 
     def _pause_video(self, ws: websocket.WebSocket) -> None:
-        """Pause the YouTube video so it doesn't play while we extract the transcript."""
+        """Mute and pause the YouTube video so it doesn't play while we extract."""
         js = """(function() {
+            var v = document.querySelector('video');
+            if (v) { v.muted = true; }
             var p = document.querySelector('#movie_player');
             if (p && p.pauseVideo) { p.pauseVideo(); return 'paused-api'; }
-            var v = document.querySelector('video');
             if (v) { v.pause(); return 'paused-video'; }
             return 'no-player';
         })()"""
