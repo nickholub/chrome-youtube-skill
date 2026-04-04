@@ -44,6 +44,15 @@ def _save_transcript(result: dict, output_dir: str) -> str:
             header_lines.append(f"Views: {result['view_count']}")
     if result.get("publish_date"):
         header_lines.append(f"Published: {result['publish_date']}")
+    if result.get("duration_seconds"):
+        try:
+            total = int(result["duration_seconds"])
+            h, rem = divmod(total, 3600)
+            m, s = divmod(rem, 60)
+            dur = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+            header_lines.append(f"Duration: {dur}")
+        except (ValueError, TypeError):
+            header_lines.append(f"Duration: {result['duration_seconds']}s")
 
     with open(path, "w", encoding="utf-8") as f:
         if header_lines:

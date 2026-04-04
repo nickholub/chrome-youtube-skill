@@ -308,6 +308,7 @@ class YouTubeTranscriptExtractor:
                         language=meta.get("language", ""),
                         view_count=meta.get("view_count", ""),
                         publish_date=meta.get("publish_date", ""),
+                        duration_seconds=meta.get("duration_seconds", ""),
                         error="No transcript found. Video may not have captions.",
                     )
 
@@ -319,6 +320,7 @@ class YouTubeTranscriptExtractor:
                     language=meta.get("language", ""),
                     view_count=meta.get("view_count", ""),
                     publish_date=meta.get("publish_date", ""),
+                    duration_seconds=meta.get("duration_seconds", ""),
                     transcript=transcript, method=method,
                 )
 
@@ -500,6 +502,7 @@ class YouTubeTranscriptExtractor:
                 return self._result(
                     video_id=video_id, url=canonical_url,
                     title=meta.get("title", ""), channel=meta.get("channel", ""),
+                    duration_seconds=meta.get("duration_seconds", ""),
                     error="No transcript found. Video may not have captions.",
                 )
             return self._result(
@@ -508,6 +511,7 @@ class YouTubeTranscriptExtractor:
                 language=meta.get("language", ""),
                 view_count=meta.get("view_count", ""),
                 publish_date=meta.get("publish_date", ""),
+                duration_seconds=meta.get("duration_seconds", ""),
                 transcript=transcript, method=method,
             )
         except Exception as e:
@@ -595,6 +599,7 @@ class YouTubeTranscriptExtractor:
         error: str = "",
         view_count: str = "",
         publish_date: str = "",
+        duration_seconds: str = "",
     ) -> dict[str, Any]:
         return {
             "success": success,
@@ -608,4 +613,5 @@ class YouTubeTranscriptExtractor:
             "error": error,
             "view_count": view_count,
             "publish_date": publish_date,
+            "duration_seconds": duration_seconds,
         }

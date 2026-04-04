@@ -47,6 +47,7 @@ When extraction succeeds, build output with this exact structure:
 ## <title> (<channel>)
 
 **URL:** <video_url>
+**Published:** <publish_date> | **Duration:** <duration> | **Views:** <view_count>
 
 ### Key points
 - ...
@@ -62,6 +63,9 @@ Content rules:
 - Key points: 5-8 bullets
 - Relevant to you: 3-5 bullets personalized
 - Actionable items: 3-5 concrete next steps
+- Format `duration_seconds` as human-readable (e.g. "12:34" or "1:02:15")
+- Format `view_count` with thousands separators (e.g. "1,234,567")
+- Use `publish_date` as-is (ISO date, e.g. "2025-03-15")
 
 Personalization targets for the user:
 - OpenClaw monetization and skill/product opportunities
@@ -117,3 +121,6 @@ Typical output includes:
 - `language`
 - `method`
 - `error`
+- `view_count`
+- `publish_date`
+- `duration_seconds`

@@ -117,7 +117,7 @@ class TestResult(unittest.TestCase):
         expected_keys = {
             "success", "video_id", "title", "channel",
             "url", "transcript", "language", "method", "error",
-            "view_count", "publish_date",
+            "view_count", "publish_date", "duration_seconds",
         }
         self.assertEqual(set(r.keys()), expected_keys)
 
