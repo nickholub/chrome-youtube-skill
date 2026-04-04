@@ -14,10 +14,14 @@ Run:
 ```bash
 TMP_JSON="$(mktemp -t yt_transcript_XXXXXX.json)"
 
+# Read output directory from config or use default
+OUTPUT_DIR="$(grep '^OUTPUT_DIR=' skill.config 2>/dev/null | head -1 | cut -d= -f2-)"
+OUTPUT_DIR="${OUTPUT_DIR:-$HOME/youtube_transcripts}"
+
 if [ -x ./scripts/run_transcript.py ]; then
-  ./scripts/run_transcript.py "<YOUTUBE_URL>" --json --json-out "$TMP_JSON" >/dev/null
+  ./scripts/run_transcript.py "<YOUTUBE_URL>" --json --json-out "$TMP_JSON" --output-dir "$OUTPUT_DIR" >/dev/null
 elif [ -x ./extract ]; then
-  ./extract "<YOUTUBE_URL>" --json --json-out "$TMP_JSON" >/dev/null
+  ./extract "<YOUTUBE_URL>" --json --json-out "$TMP_JSON" --output-dir "$OUTPUT_DIR" >/dev/null
 else
   echo "Runner not found. Run from the youtube skill root."
   exit 1
@@ -81,18 +85,21 @@ Personalization targets for the user:
 
 ## 5) Required save
 
-On every successful run, always write the summary file to a configured output directory.
+On every successful run, two files are saved to the output directory:
+
+1. **Transcript** (`.txt`) — saved automatically by the extractor via `--output-dir` in Step 1.
+2. **Summary** (`.md`) — written by this skill after building the summary in Step 3.
 
 **Output directory resolution:**
 1. Read from `skill.config` in the project root (format: `OUTPUT_DIR=/path/to/directory`)
 2. If config doesn't exist or `OUTPUT_DIR` is not set, fall back to `~/youtube_transcripts`
 
-**File path format:** `<output_directory>/<channel> - <title>.md`
+**Summary file path:** `<output_directory>/<channel> - <title>.md`
 
 Rules:
 - Create output directory if it does not exist.
 - Sanitize filename characters (`/ \\ : * ? " < > |`) to `_`.
-- File contents must exactly match the markdown structure in Step 3.
+- Summary file contents must exactly match the markdown structure in Step 3.
 - Save via shell `exec` (not `write`) because file tools are workspace-root sandboxed and will reject paths outside workspace with `Path escapes workspace root`.
 - Use a safe heredoc pattern for writes (example):
 
@@ -107,7 +114,7 @@ cat > "$OUTPUT_DIR/<channel> - <title>.md" <<'MD'
 MD
 ```
 
-- After saving, output the exact absolute path of the saved file.
+- After saving, output the exact absolute paths of both saved files (transcript `.txt` and summary `.md`).
 
 ## Expected JSON fields
 
